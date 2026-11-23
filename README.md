@@ -18,19 +18,19 @@ dotnet build -c Release
 ./scripts/start-desktop.ps1 -Configuration Release
 ```
 
-初始化脚本从 [资产清单](runtime.assets.json) 读取固定版本的 llama.cpp、PaddleOCR 和 Whisper 运行资产，校验后保存在 `runtime`。Vulkan 设备可传入 `-GgufBackend Vulkan`。初始化完成后，识别与翻译均可离线运行。
+初始化脚本下载固定版本的 llama.cpp、PaddleOCR 和 Whisper 运行资产，校验 SHA-256 后保存在 `runtime`。Vulkan 设备可传入 `-GgufBackend Vulkan`。初始化完成后，识别与翻译均可离线运行。
 
 在托盘左击打开设置，右击查看功能菜单。Windows 的通知区域可能把图标收到 `↑` 内。启动脚本可加 `-Settings` 直接打开设置。程序保持单实例，后续启动会请求已有实例打开设置。
 
 ## 模型和配置
 
-1. 准备一个本地 GGUF 模型。在设置中选择模型目录和要使用的文件。默认质量选项为 Qwen3.5-9B Q4_K_M，轻量选项为 Qwen3.5-4B Q4_K_M。
+1. 准备一个本地 GGUF 模型。在设置中选择模型目录和要使用的文件。推荐 Qwen3.5-9B Q4_K_M，显存较小时可选 Qwen3.5-4B Q4_K_M。
 2. 启用 GPU 时优先使用 CUDA，然后尝试已安装的 Vulkan。启用 CPU 回退时允许使用 CPU。设置页显示实际加载的后端。
 3. 可以从托盘手动释放模型。应用会在无活动功能且达到空闲时限时释放模型。
 
-[运行配置](translator.runtime.json) 提供推理预算、采集等待、音频分段和设备参数。开发时编辑仓库根目录的文件，发布时编辑程序旁边的同名文件，也可用 `TRANSLATOR_CONFIG_PATH` 指定一个完整配置。配置加载失败时使用内置默认值，并在状态中显示原因。
+推理预算、采集等待和音频分段参数有内置默认值。高级调优可使用本机数据目录里的 `translator.runtime.json`，也可用 `TRANSLATOR_CONFIG_PATH` 指定完整配置。
 
-设置页把个人偏好保存到本机。开发或便携运行可在工作目录或程序旁放置 `translater.local.json`，其中 `modelDirectory` 使用完整路径，`llamaExecutable` 可指向自定义服务器。用 `TRANSLATER_RUNTIME_DIR` 可指定运行资产目录。OCR 和音频位置保存在同一设置目录里的 `overlay-positions.json`。
+设置页将模型目录、所选文件和其他个人偏好保存到本机的 `%LOCALAPPDATA%\Translater\settings.json`。用 `TRANSLATER_RUNTIME_DIR` 可指定运行资产目录。OCR 和音频位置保存在同一设置目录里的 `overlay-positions.json`。
 
 ## 检查
 

@@ -16,11 +16,8 @@ internal static class RuntimePaths
         string? path = Environment.GetEnvironmentVariable("TRANSLATOR_CONFIG_PATH");
         if (string.IsNullOrWhiteSpace(path))
         {
-            string adjacent = Path.Combine(AppContext.BaseDirectory, name);
-            if (File.Exists(Path.Combine(Environment.CurrentDirectory, "Translator.slnx")) && !Directory.Exists(Path.Combine(AppContext.BaseDirectory, "runtime")))
-                path = Path.Combine(Environment.CurrentDirectory, name);
-            else if (File.Exists(adjacent)) path = adjacent;
-            else return (RuntimeOptions.Defaults, null);
+            path = Path.Combine(SettingsStore.UserDirectory, name);
+            if (!File.Exists(path)) return (RuntimeOptions.Defaults, null);
         }
 
         try { return (RuntimeOptions.Load(path), null); }

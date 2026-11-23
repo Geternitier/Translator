@@ -37,7 +37,7 @@ public sealed partial class SettingsWindow : Window
         ContinuousOcrKeyBox.Text = settings.Shortcuts.ContinuousOcr;
         AudioKeyBox.Text = settings.Shortcuts.Audio;
         Feedback.Text = result.Error;
-        TryShowModels(settings.ModelDirectory, settings.ModelFileName);
+        TryShowModels(settings.ModelDirectory, settings.ModelFileName, restoreMissing: true);
     }
 
     internal void MonitorStatus(Func<string> status)
@@ -63,7 +63,7 @@ public sealed partial class SettingsWindow : Window
             using IStorageFolder folder = folders[0];
             string directory = SettingsStore.NormalizeDirectory(folder.TryGetLocalPath());
             ModelDirectoryBox.Text = directory;
-            if (TryShowModels(directory, SelectedModel)) Feedback.Text = "已选择目录，保存后生效。";
+            if (TryShowModels(directory, SelectedModel)) Feedback.Text = "请选择模型，保存后生效。";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or ArgumentException or NotSupportedException)
@@ -72,12 +72,11 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private string SelectedModel => (ModelBox.SelectedItem as ModelChoice)?.File.FileName ?? RuntimePaths.Configuration.Options.Models.DefaultFile;
+    private string SelectedModel => (ModelBox.SelectedItem as ModelChoice)?.File.FileName ?? "";
 
     private void RefreshModelDirectory(object? sender, RoutedEventArgs args)
     {
-        if (string.IsNullOrWhiteSpace(ModelDirectoryBox.Text)) return;
-        TryShowModels(ModelDirectoryBox.Text, SelectedModel);
+        TryShowModels(ModelDirectoryBox.Text ?? "", SelectedModel);
     }
 
     private void SaveSettings(object? sender, RoutedEventArgs args)
@@ -91,17 +90,21 @@ public sealed partial class SettingsWindow : Window
             };
             if (shortcuts.Values().Select(Hotkey.Parse).Distinct().Count() != shortcuts.Values().Length)
                 throw new FormatException("快捷键不可重复。");
-            var settings = store.Load().Settings with
+            AppSettings previous = store.Load().Settings;
+            string model = SelectedModel;
+            if (model.Length != 0 && (directory != previous.ModelDirectory || model != previous.ModelFileName)
+                && catalog.Inspect(directory, model).Status != ModelFileStatus.Available)
+                throw new ArgumentException("请选择目录中可读取的 GGUF 模型。");
+            AppSettings settings = previous with
             {
                 ModelDirectory = directory,
                 SourceLanguage = ReadChoice<SourceLanguage>(SourceLanguageBox),
-                ModelFileName = SelectedModel,
+                ModelFileName = model,
                 UseGpu = UseGpuBox.IsChecked == true, AllowCpuFallback = AllowCpuFallbackBox.IsChecked == true,
                 BilingualSubtitles = BilingualBox.IsChecked == true,
                 SubtitleFontSize = (int)(SubtitleFontBox.Value ?? 22), SubtitleBottomOffset = (int)(SubtitleOffsetBox.Value ?? 64),
                 Shortcuts = shortcuts
             };
-            catalog.Inspect(directory, settings.ModelFileName);
             store.Save(settings);
             SettingsSaved?.Invoke(settings);
             ModelDirectoryBox.Text = directory;
@@ -114,14 +117,17 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private bool TryShowModels(string directory, string selectedName)
+    private bool TryShowModels(string directory, string selectedName, bool restoreMissing = false)
     {
         try
         {
             directory = SettingsStore.NormalizeDirectory(directory);
             var models = catalog.Inspect(directory).Select(file => new ModelChoice(file)).ToList();
             ModelChoice? selected = models.Find(item => string.Equals(item.File.FileName, selectedName, StringComparison.OrdinalIgnoreCase));
-            if (selected is null)
+            ModelChoice? previous = ModelBox.SelectedItem as ModelChoice;
+            if (selected is null && selectedName.Length != 0
+                && (restoreMissing || string.Equals(previous?.File.Path, Path.Combine(directory, selectedName),
+                    StringComparison.OrdinalIgnoreCase)))
             {
                 selected = new ModelChoice(catalog.Inspect(directory, selectedName));
                 models.Insert(0, selected);
@@ -132,6 +138,7 @@ public sealed partial class SettingsWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
+            ModelBox.ItemsSource = null;
             Feedback.Text = $"无法读取模型目录。{exception.Message}";
             return false;
         }

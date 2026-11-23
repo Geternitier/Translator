@@ -169,6 +169,8 @@ public sealed class LlamaTranslator(Func<LlamaOptions> options, ILlamaRuntimePro
         }
 
         await StopServerAsync().ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(config.ModelFileName))
+            throw new InvalidOperationException("请在设置中选择模型目录和翻译模型。");
         ModelFile selected = catalog.Inspect(config.ModelDirectory, config.ModelFileName);
         if (selected.Status != ModelFileStatus.Available)
             throw new InvalidOperationException($"模型不可用，请检查设置中的模型目录。{selected.ModelName}");

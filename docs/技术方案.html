@@ -471,12 +471,12 @@ svg{min-width:0}
 </section>
 <section id="config"><h2>配置与模型</h2>
 <div class="table"><table><thead><tr><th>文件</th><th>内容</th></tr></thead><tbody>
-<tr><th><code>translator.runtime.json</code></th><td>质量／轻量模型默认文件名，推理上下文与生成预算，显存和进程时限，OCR 和 DXGI 等待时间，字幕队列，Whisper 分段与 Windows 设备参数。</td></tr>
-<tr><th><code>runtime.assets.json</code></th><td>固定版本的 CUDA／Vulkan 运行包、PaddleOCR 和 Whisper 资产，以及 SHA-256 校验值。初始化脚本读取该清单。</td></tr>
+<tr><th><code>translator.runtime.json</code></th><td>应用内置推理预算、显存和进程时限、OCR 和 DXGI 等待时间、字幕队列、Whisper 分段和设备参数，可通过本机高级配置覆盖。</td></tr>
+<tr><th><code>scripts/setup-runtime.ps1</code></th><td>固定版本的 CUDA／Vulkan 运行包、PaddleOCR 和 Whisper 资产，以及 SHA-256 校验值。由安装脚本下载和校验。</td></tr>
 <tr><th><code>translater.local.json</code> 或用户设置</th><td>模型目录、所选文件、语种、GPU 与 CPU 回退、快捷键和字幕偏好。设置页继续读取已有配置。</td></tr>
 <tr><th><code>overlay-positions.json</code></th><td>OCR 与音频窗的独立位置。恢复时按当前屏幕工作区约束窗口位置。</td></tr>
 </tbody></table></div>
-<p>运行配置可通过 <code>TRANSLATOR_CONFIG_PATH</code> 指定，使用完整配置文件。配置无效时界面状态会说明原因，并使用编译时嵌入的默认值。</p>
+<p>首次运行时在设置页选择模型目录和 GGUF 文件，选择结果保存在本机。高级调优可在本机数据目录放置完整的 <code>translator.runtime.json</code>，或通过 <code>TRANSLATOR_CONFIG_PATH</code> 指定文件。配置无效时显示原因并使用内置默认值。</p>
 <p>质量模型的默认文件是 Qwen3.5-9B Q4_K_M，轻量文件是 Qwen3.5-4B Q4_K_M。模型目录应包含可读取的 GGUF 文件。显存由所选权重、上下文缓存和计算缓冲共同决定。</p></section>
 <section id="ports"><h2>移植边界与验证</h2>
 <p>Windows 首版使用 UI Automation、DXGI/GDI、WASAPI Process Loopback 和 Windows 托盘。macOS 与 Linux 可以在相同契约下提供选区、选框采集、程序音频及推理运行时适配器。平台 UI 和权限交互也在各自的宿主层实现。</p>

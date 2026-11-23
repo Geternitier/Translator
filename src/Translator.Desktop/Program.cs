@@ -45,8 +45,11 @@ internal static class Program
 
         if (RuntimePaths.Configuration.Error is { } configError) Console.Error.WriteLine(configError);
         var catalog = new GgufModelCatalog();
-        ModelFile selected = catalog.Inspect(result.Settings.ModelDirectory, result.Settings.ModelFileName);
-        Console.WriteLine($"Selected\t{selected.Status}\t{selected.Path}");
+        ModelFile? selected = result.Settings.ModelFileName.Length == 0
+            ? null : catalog.Inspect(result.Settings.ModelDirectory, result.Settings.ModelFileName);
+        Console.WriteLine(selected is null
+            ? "Selected\tNotConfigured"
+            : $"Selected\t{selected.Status}\t{selected.Path}");
         foreach (ModelFile file in catalog.Inspect(result.Settings.ModelDirectory))
             Console.WriteLine($"{file.FileName}\tGGUF\t{file.Status}\t{file.SizeBytes}\t{file.Path}");
 
@@ -59,6 +62,6 @@ internal static class Program
             Console.WriteLine($"Application audio sources: {new WindowsAudioSourceCatalog().ListSources().Count}");
         }
 
-        return selected.Status == ModelFileStatus.Available ? 0 : 1;
+        return selected?.Status == ModelFileStatus.Available ? 0 : 1;
     }
 }

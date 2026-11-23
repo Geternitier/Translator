@@ -34,7 +34,8 @@
             </Grid>
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
               <TextBlock Text="翻译模型" VerticalAlignment="Center" />
-              <ComboBox x:Name="ModelBox" Grid.Column="1" HorizontalAlignment="Stretch" AutomationProperties.Name="翻译模型" />
+              <ComboBox x:Name="ModelBox" Grid.Column="1" HorizontalAlignment="Stretch"
+                        PlaceholderText="选择 GGUF 模型" AutomationProperties.Name="翻译模型" />
             </Grid>
             <CheckBox x:Name="UseGpuBox" Content="优先使用 GPU" />
             <CheckBox x:Name="AllowCpuFallbackBox" Content="GPU 不可用时使用 CPU" />

@@ -1,10 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Translator.Core;
 
 public sealed record RuntimeOptions(
-    ModelDefaults Models, LlamaTuning Llama, OcrTuning Ocr, AudioTuning Audio, WhisperTuning Whisper, WindowsTuning Windows)
+    LlamaTuning Llama, OcrTuning Ocr, AudioTuning Audio, WhisperTuning Whisper, WindowsTuning Windows)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -13,31 +14,70 @@ public sealed record RuntimeOptions(
         RespectRequiredConstructorParameters = true
     };
 
-    public static RuntimeOptions Defaults { get; } = LoadDefaults();
+    public static RuntimeOptions Defaults { get; } = new(
+        Llama: new(
+            ContextTokens: 4096,
+            MaxInputCharacters: 5500,
+            TextTokens: 1536,
+            SubtitleTokens: 192,
+            ParagraphTokens: 768,
+            TranslationTemperature: 0.2,
+            RevisionTemperature: 0.15,
+            GpuReserveMiB: 1536,
+            MinimumFreeGpuMiB: 768,
+            MemoryCheckSeconds: 20,
+            IdleSeconds: 300,
+            IdlePollSeconds: 15,
+            StartupSeconds: 90,
+            StartupPollMs: 250,
+            RequestSeconds: 60,
+            LogVerbosity: 4,
+            ContextLineCharacters: 240),
+        Ocr: new(
+            FallbackIntervalMs: 500,
+            QuietMs: 100,
+            MaxWaitMs: 300,
+            BlankConfirmationMs: 160,
+            DxgiAcquireMs: 75,
+            DxgiReadbackMs: 80,
+            DxgiFirstFrameMs: 600,
+            DxgiRecoveryMs: 100),
+        Audio: new(
+            PendingSegments: 8,
+            ShortBudgetMs: 7000,
+            RefreshMs: 50,
+            ParagraphDelayMs: 1400,
+            ParagraphBudgetMs: 6000,
+            ParagraphLines: 4,
+            ParagraphGapMs: 2000,
+            HistoryLines: 3,
+            VisibleLines: 48),
+        Whisper: new(
+            PreRollMs: 150,
+            MinSpeechMs: 200,
+            TrailingSilenceMs: 350,
+            MaxSegmentMs: 4000,
+            DiscontinuityMs: 100,
+            VoiceThreshold: 180,
+            MaxThreads: 6),
+        Windows: new(
+            CudaDevice: "CUDA0",
+            MemoryProbeMs: 2000));
 
     public static RuntimeOptions Load(string path)
     {
         using FileStream file = File.OpenRead(path);
-        return Read(file);
-    }
+        if (JsonNode.Parse(file) is not JsonObject configuration)
+            throw new InvalidDataException("运行配置必须是 JSON 对象。");
 
-    private static RuntimeOptions LoadDefaults()
-    {
-        using Stream resource = typeof(RuntimeOptions).Assembly.GetManifestResourceStream("Translator.Core.RuntimeDefaults.json")
-            ?? throw new InvalidOperationException("Missing embedded runtime configuration.");
-        return Read(resource);
-    }
-
-    private static RuntimeOptions Read(Stream stream)
-    {
-        RuntimeOptions value = JsonSerializer.Deserialize<RuntimeOptions>(stream, JsonOptions)
+        // Legacy local overrides also contained model names. The settings page owns model selection.
+        configuration.Remove("models");
+        RuntimeOptions value = configuration.Deserialize<RuntimeOptions>(JsonOptions)
             ?? throw new InvalidDataException("运行配置为空。");
-        if (value.Models is not { } models || value.Llama is not { } llama || value.Ocr is not { } ocr
-            || value.Audio is not { } audio || value.Whisper is not { } whisper || value.Windows is not { } windows)
+        if (value.Llama is not { } llama || value.Ocr is not { } ocr || value.Audio is not { } audio
+            || value.Whisper is not { } whisper || value.Windows is not { } windows)
             throw new InvalidDataException("运行配置缺少区块。");
 
-        if (!IsModelName(models.DefaultFile) || !IsModelName(models.LightFile))
-            throw new InvalidDataException("models 必须指定有效的 GGUF 文件名。");
         if (llama.ContextTokens is < 256 or > 262144
             || !Within(1, llama.ContextTokens - 1, llama.TextTokens, llama.SubtitleTokens, llama.ParagraphTokens)
             || !Within(1, 1_000_000, llama.MaxInputCharacters, llama.ContextLineCharacters)
@@ -62,12 +102,7 @@ public sealed record RuntimeOptions(
 
     private static bool Within(int minimum, int maximum, params int[] values) =>
         values.All(value => value >= minimum && value <= maximum);
-
-    private static bool IsModelName(string? filename) => !string.IsNullOrWhiteSpace(filename)
-        && filename == Path.GetFileName(filename) && filename.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase);
 }
-
-public sealed record ModelDefaults(string DefaultFile, string LightFile);
 
 public sealed record LlamaTuning(
     int ContextTokens, int MaxInputCharacters, int TextTokens, int SubtitleTokens, int ParagraphTokens,

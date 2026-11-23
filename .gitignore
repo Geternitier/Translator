@@ -8,3 +8,4 @@ runtime/
 *.gguf
 translater.local.json
 overlay-positions.json
+translator.runtime.json

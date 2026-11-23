@@ -10,7 +10,7 @@ internal sealed record AppSettings
 {
     public string ModelDirectory { get; init; } = Path.Combine(SettingsStore.UserDirectory, "Models");
     public SourceLanguage SourceLanguage { get; init; } = SourceLanguage.Automatic;
-    public string ModelFileName { get; init; } = RuntimePaths.Configuration.Options.Models.DefaultFile;
+    public string ModelFileName { get; init; } = "";
     public string LlamaExecutable { get; init; } = "";
     public bool UseGpu { get; init; } = true;
     public bool AllowCpuFallback { get; init; } = true;
@@ -68,32 +68,19 @@ internal sealed class SettingsStore
             AppSettings settings = root.Deserialize<AppSettings>(Options)
                 ?? throw new JsonException("设置内容为空。");
             string directory = NormalizeDirectory(settings.ModelDirectory);
-            ModelDefaults defaults = RuntimePaths.Configuration.Options.Models;
-            string model = settings.ModelFileName ?? defaults.DefaultFile;
+            string model = settings.ModelFileName ?? "";
+            if (!model.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase))
+                model = "";
             ShortcutSettings shortcuts = settings.Shortcuts ?? new ShortcutSettings();
             bool allowCpuFallback = settings.AllowCpuFallback;
             bool legacyModelSettings = !root.TryGetProperty("modelFileName", out _);
-            bool obsoleteModel = !model.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase);
-            if (obsoleteModel)
-                model = model.Contains("4B", StringComparison.OrdinalIgnoreCase) ? defaults.LightFile : defaults.DefaultFile;
-            if (legacyModelSettings || obsoleteModel)
-            {
-                if (legacyModelSettings && root.TryGetProperty("instantMode", out JsonElement oldMode) && oldMode.ValueKind == JsonValueKind.String
-                    && string.Equals(oldMode.GetString(), "performance", StringComparison.OrdinalIgnoreCase))
-                    model = defaults.LightFile;
-                if (!File.Exists(Path.Combine(directory, model)) && File.Exists(Path.Combine(directory, "Qwen" + model)))
-                    model = "Qwen" + model;
-            }
             if (legacyModelSettings || (root.TryGetProperty("shortcuts", out JsonElement oldShortcuts)
                     && oldShortcuts.ValueKind == JsonValueKind.Object && oldShortcuts.TryGetProperty("instantOcr", out _)))
                 shortcuts = MigrateContinuousShortcut(shortcuts);
             if (!root.TryGetProperty("allowCpuFallback", out _) && root.TryGetProperty("allowFallback", out JsonElement oldFallback)
                 && oldFallback.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 allowCpuFallback = oldFallback.GetBoolean();
-            var catalog = new GgufModelCatalog();
-            if (obsoleteModel && catalog.Inspect(directory, model).Status != ModelFileStatus.Available)
-                model = catalog.Inspect(directory).FirstOrDefault(file => file.Status == ModelFileStatus.Available)?.FileName ?? defaults.DefaultFile;
-            catalog.Inspect(directory, model);
+            if (model.Length != 0) new GgufModelCatalog().Inspect(directory, model);
             return new SettingsLoadResult(settings with
             {
                 ModelDirectory = directory,

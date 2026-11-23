@@ -78,7 +78,11 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         if (loaded.Error is not null) feedback = loaded.Error;
     }
 
-    public string Status => string.Join('\n', new[] { translator.Status, RuntimePaths.Configuration.Error, feedback }.Concat(shortcutFeedback.Values)
+    public string Status => string.Join('\n', new[]
+        {
+            settings.ModelFileName.Length == 0 ? "请在设置中选择模型目录和翻译模型。" : translator.Status,
+            RuntimePaths.Configuration.Error, feedback
+        }.Concat(shortcutFeedback.Values)
         .Where(line => !string.IsNullOrEmpty(line)));
 
     public void ApplySettings(AppSettings changed)
@@ -122,7 +126,7 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
 
     private void PrepareModel()
     {
-        if (disposed || modelPreparation is not null) return;
+        if (disposed || modelPreparation is not null || settings.ModelFileName.Length == 0) return;
         var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         modelPreparation = run;
         Run(async () =>
