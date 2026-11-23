@@ -1,0 +1,89 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Translator.Desktop.SettingsWindow"
+        Title="桌面翻译 · 设置"
+        Width="600" Height="665" MinWidth="475" MinHeight="410"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="17" />
+    </Style>
+    <Style Selector="TextBlock.secondary">
+      <Setter Property="Opacity" Value="0.72" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="24" RowDefinitions="*,Auto">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="16" Margin="0,0,8,0">
+        <StackPanel Spacing="3">
+          <TextBlock Text="设置" FontSize="27" FontWeight="SemiBold" />
+          <TextBlock Text="本地模型与翻译偏好" Classes="secondary" />
+        </StackPanel>
+
+        <Border Padding="16" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+          <StackPanel Spacing="10">
+            <TextBlock Text="本地模型" Classes="heading" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox x:Name="ModelDirectoryBox" PlaceholderText="模型目录" LostFocus="RefreshModelDirectory"
+                       AutomationProperties.Name="模型目录" />
+              <Button Grid.Column="1" Content="浏览" Click="BrowseModels" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+              <TextBlock Text="翻译模型" VerticalAlignment="Center" />
+              <ComboBox x:Name="ModelBox" Grid.Column="1" HorizontalAlignment="Stretch" AutomationProperties.Name="翻译模型" />
+            </Grid>
+            <CheckBox x:Name="UseGpuBox" Content="优先使用 GPU" />
+            <CheckBox x:Name="AllowCpuFallbackBox" Content="GPU 不可用时使用 CPU" />
+            <TextBlock x:Name="RuntimeStatus" Classes="secondary" />
+          </StackPanel>
+        </Border>
+
+        <Border Padding="16" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+          <StackPanel Spacing="12">
+            <TextBlock Text="翻译偏好" Classes="heading" />
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
+                  ColumnSpacing="12" RowSpacing="9">
+              <TextBlock Text="源语言" VerticalAlignment="Center" />
+              <ComboBox x:Name="SourceLanguageBox" Grid.Column="1" Width="150"
+                        AutomationProperties.Name="源语言" />
+              <TextBlock Grid.Row="1" Text="目标语言" VerticalAlignment="Center" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="简体中文" VerticalAlignment="Center" />
+              <TextBlock Grid.Row="2" Text="字幕字号" VerticalAlignment="Center" />
+              <NumericUpDown x:Name="SubtitleFontBox" Grid.Row="2" Grid.Column="1" Width="150"
+                             Minimum="14" Maximum="44" Increment="1" FormatString="0" />
+              <TextBlock Grid.Row="3" Text="字幕底部间距" VerticalAlignment="Center" />
+              <NumericUpDown x:Name="SubtitleOffsetBox" Grid.Row="3" Grid.Column="1" Width="150"
+                             Minimum="16" Maximum="240" Increment="4" FormatString="0" />
+            </Grid>
+            <CheckBox x:Name="BilingualBox" Content="字幕同时显示原文" />
+          </StackPanel>
+        </Border>
+
+        <Border Padding="16" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+          <StackPanel Spacing="12">
+            <TextBlock Text="全局快捷键" Classes="heading" />
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+              <TextBlock Text="持续 OCR" VerticalAlignment="Center" />
+              <TextBox x:Name="ContinuousOcrKeyBox" Grid.Column="1" Width="164" />
+              <TextBlock Grid.Row="1" Text="音频字幕" VerticalAlignment="Center" />
+              <TextBox x:Name="AudioKeyBox" Grid.Row="1" Grid.Column="1" Width="164" />
+            </Grid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="1" Margin="0,16,0,0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <TextBlock x:Name="Feedback" Classes="secondary" VerticalAlignment="Center"
+                 AutomationProperties.LiveSetting="Polite" />
+      <Button Grid.Column="1" Classes="accent" MinWidth="90" HorizontalContentAlignment="Center"
+              VerticalAlignment="Center" Content="保存" Click="SaveSettings" />
+    </Grid>
+  </Grid>
+</Window>

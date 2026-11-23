@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>流式音频字幕设计 · Translator</title><style>
+:root{color-scheme:light;--ink:#132a27;--muted:#4b6260;--line:#c9dad6;--accent:#146151;--soft:#edf7f3;--paper:#fff;--error:#9d4235}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f8f7;color:var(--ink);font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}
+header{background:#153d36;color:white;padding:3rem clamp(1rem,5vw,4.5rem) 2.35rem}
+header>div,main{max-width:1080px;margin:auto}
+header h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.2;margin:0 0 .7rem}
+header p{margin:0;max-width:55rem;color:#d7ebe5}
+nav{display:flex;flex-wrap:wrap;gap:.6rem 1.4rem;margin-top:1.35rem}
+header a{color:#f0fffb}
+main{padding:0 clamp(.85rem,4vw,2.5rem) 3rem}
+section{margin-top:1.25rem;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:clamp(1rem,3vw,2rem)}
+h2,h3{line-height:1.35;margin:.1rem 0 .75rem}
+h3{margin-top:1.35rem}
+p,ol,ul{margin:.5rem 0 .9rem}
+a{color:var(--accent)}
+code{background:var(--soft);padding:.08em .27em;border-radius:4px;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;text-align:left}
+th,td{padding:.55rem .75rem;border-bottom:1px solid var(--line);vertical-align:top}
+thead{background:var(--soft)}
+.table{overflow-x:auto}
+.note{color:var(--muted);font-size:.92rem}
+.diagram{overflow-x:auto;background:#f9fcfb;border:1px solid var(--line);border-radius:9px;padding:8px}
+figure{margin:1rem 0 1.5rem}
+svg{width:100%;min-width:720px;display:block;height:auto}
+.node rect{fill:#fff;stroke:#9bb9b1}
+.node.desktop rect{fill:#dbf0e8;stroke:#6b9e8d}
+.node.port rect{fill:#e9f4f2;stroke:#9bb9b1}
+.type{font:600 12px Consolas,"Microsoft YaHei",sans-serif;fill:var(--ink)}
+.detail{font:12px system-ui,"Microsoft YaHei",sans-serif;fill:var(--muted)}
+.column{font:600 15px system-ui,"Microsoft YaHei",sans-serif;fill:var(--accent)}
+.edge{fill:none;stroke:#44766b;stroke-width:1.55}
+.edge.realizes,.edge.returns,.lifeline{stroke-dasharray:5 4}
+.edge.cancel{stroke:var(--error);stroke-dasharray:5 4}
+.lifeline{stroke:#acc3bd;stroke-width:1}
+.message{font:12px system-ui,"Microsoft YaHei",sans-serif;fill:var(--ink);stroke:#f9fcfb;stroke-width:4px;paint-order:stroke fill;stroke-linejoin:round}
+figcaption{font-size:.92rem;color:var(--muted);margin-top:.45rem}
+.refs a{margin-right:1rem}
+@media print{body{background:white}
+section{break-inside:avoid}
+svg{min-width:0}
+}
+</style></head>
+<body><header><div><h1>流式音频字幕设计</h1><p>记录 Windows 程序音频到双层本地译文的实现和调度边界。</p><nav aria-label="文档目录"><a href="技术方案.html#sequence">技术方案与时序</a><a href="#capture">采集和转写</a><a href="#layers">字幕与修订</a><a href="#checks">验收</a></nav></div></header>
+<main><section id="capture"><h2>采集和转写</h2>
+<p>托盘列出可选择的应用程序。通过 <code>IApplicationAudioCapture</code> 获取所选进程树的音频，转换为 16 kHz 单声道 PCM。Windows 实现为 <code>ProcessLoopbackCapture</code>。停止或更换程序时，旧会话取消并回收采集资源。</p>
+<p><code>WhisperSpeechTranscriber</code> 按能量、句尾静音和最长块时限切分音频，逐块提交带起止时间和语种的结果。前置样本、静音阈值和分段时长由运行配置控制。</p></section>
+<section id="layers"><h2>即时层和修订层</h2>
+<figure><div class="diagram"><svg viewBox="0 0 980 683" role="img" aria-labelledby="audio-title" xmlns="http://www.w3.org/2000/svg">
+<title id="audio-title">时序 · 即时字幕与可撤销的段落修订</title>
+<defs>
+<marker id="audio-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="18.4" y="14" width="147.2" height="52" rx="9" />
+<text x="92" y="37" class="type" text-anchor="middle">WASAPI</text>
+<text x="92" y="58" class="detail" text-anchor="middle">所选程序音频</text>
+</g>
+<line class="lifeline" x1="92" x2="92" y1="66" y2="668"/>
+<g class="node ">
+<rect x="177.4" y="14" width="147.2" height="52" rx="9" />
+<text x="251" y="37" class="type" text-anchor="middle">Whisper</text>
+<text x="251" y="58" class="detail" text-anchor="middle">切块转写</text>
+</g>
+<line class="lifeline" x1="251" x2="251" y1="66" y2="668"/>
+<g class="node ">
+<rect x="336.4" y="14" width="147.2" height="52" rx="9" />
+<text x="410" y="37" class="type" text-anchor="middle">AudioSubtitleSession</text>
+<text x="410" y="58" class="detail" text-anchor="middle">时限和编号</text>
+</g>
+<line class="lifeline" x1="410" x2="410" y1="66" y2="668"/>
+<g class="node ">
+<rect x="496.4" y="14" width="147.2" height="52" rx="9" />
+<text x="570" y="37" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="570" y="58" class="detail" text-anchor="middle">客户端</text>
+</g>
+<line class="lifeline" x1="570" x2="570" y1="66" y2="668"/>
+<g class="node ">
+<rect x="655.4" y="14" width="147.2" height="52" rx="9" />
+<text x="729" y="37" class="type" text-anchor="middle">llama-server</text>
+<text x="729" y="58" class="detail" text-anchor="middle">本地推理</text>
+</g>
+<line class="lifeline" x1="729" x2="729" y1="66" y2="668"/>
+<g class="node ">
+<rect x="814.4" y="14" width="147.2" height="52" rx="9" />
+<text x="888" y="37" class="type" text-anchor="middle">字幕窗</text>
+<text x="888" y="58" class="detail" text-anchor="middle">按 ID 追加和修订</text>
+</g>
+<line class="lifeline" x1="888" x2="888" y1="66" y2="668"/>
+<path class="edge " d="M94,106 H248" marker-end="url(#audio-arrow)"/>
+<text x="171.5" y="98" class="message" text-anchor="middle">传递 PCM 帧</text>
+<path class="edge " d="M253,148 H407" marker-end="url(#audio-arrow)"/>
+<text x="330.5" y="140" class="message" text-anchor="middle">提交转写短句</text>
+<path class="edge " d="M412,190 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="182" class="message" text-anchor="middle">请求即时译文</text>
+<path class="edge " d="M572,232 H726" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="224" class="message" text-anchor="middle">发起 SSE 请求</text>
+<path class="edge returns" d="M727,274 H573" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="266" class="message" text-anchor="middle">返回流式片段</text>
+<path class="edge returns" d="M568,316 H413" marker-end="url(#audio-arrow)"/>
+<text x="490" y="308" class="message" text-anchor="middle">交付累计文本</text>
+<path class="edge " d="M412,358 H885" marker-end="url(#audio-arrow)"/>
+<text x="649" y="350" class="message" text-anchor="middle">用同一行 ID 流式更新</text>
+<path class="edge " d="M412,400 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="392" class="message" text-anchor="middle">空档中请求段落修订</text>
+<path class="edge " d="M572,442 H726" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="434" class="message" text-anchor="middle">请求逐行 JSON</text>
+<rect x="235" y="451" width="704" height="220" rx="5" fill="none" stroke="#91aaa2"/>
+<text x="247" y="466" class="detail">alt · 修订完成</text>
+<path class="edge returns" d="M727,484 H573" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="476" class="message" text-anchor="middle">返回修订结果</text>
+<path class="edge returns" d="M568,526 H413" marker-end="url(#audio-arrow)"/>
+<text x="490" y="518" class="message" text-anchor="middle">交付有效行</text>
+<path class="edge " d="M412,568 H885" marker-end="url(#audio-arrow)"/>
+<text x="649" y="560" class="message" text-anchor="middle">按行 ID 更新原译文</text>
+<path d="M235,584 H939" stroke="#91aaa2" stroke-dasharray="5 4"/>
+<text x="247" y="600" class="detail">else · 短句抢占</text>
+<path class="edge cancel" d="M253,635 H407" marker-end="url(#audio-arrow)"/>
+<text x="330.5" y="627" class="message" text-anchor="middle">修订期间有新短句</text>
+<path class="edge cancel" d="M412,652 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="644" class="message" text-anchor="middle">取消修订并优先处理短句</text>
+</svg></div><figcaption>时序 · 即时字幕与可撤销的段落修订</figcaption></figure>
+<ol>
+<li>短句进入有界队列，队列满时优先保留新句。过期句和中文跳过。即时请求携带最近几条已确认原文，并在同一行 ID 上合并 SSE 片段。</li>
+<li>相邻短句满足行数和间隔时，字幕会话尝试空档修订。请求使用原文和行 ID，返回结构化逐行译文。有效结果替换原行。</li>
+<li>新短句到达时取消正在等候或生成的修订。修订超时或失败时保留已显示译文。模型驻留和串行调度由 <code>LlamaTranslator</code> 统一负责。</li>
+<li>字幕窗支持滚动、双语显示和标题栏拖动。位置单独保存，关闭或更换程序后在上次位置恢复。</li>
+</ol></section>
+<section id="checks"><h2>验收用例</h2>
+<ul><li>同时播放两个程序，检查只有所选进程树的声音进入字幕。</li><li>在英日片段之间加入静音，检查短句出现和空档段落修订。</li><li>修订期间继续发声，检查新短句优先以及旧 ID 的译文不会写入别处。</li><li>拖动后停止并重开字幕，检查恢复位置和滚动。</li></ul>
+<p class="refs"><a href="技术方案.html#config">运行配置</a><a href="../README.md">使用说明</a></p></section></main></body></html>

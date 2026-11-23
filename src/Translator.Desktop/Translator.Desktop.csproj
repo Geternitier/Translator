@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets/translator.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../../translator.runtime.json" Link="translator.runtime.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <AvaloniaResource Include="Assets/translator.ico" />
+    <None Update="Assets/translator.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Translator.Core/Translator.Core.csproj" />
+    <ProjectReference Include="../Translator.Inference/Translator.Inference.csproj" />
+    <ProjectReference Include="../Translator.Platform.Windows/Translator.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>

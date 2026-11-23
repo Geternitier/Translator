@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Translator.Core/Translator.Core.csproj" />
+    <Project Path="src/Translator.Desktop/Translator.Desktop.csproj" />
+    <Project Path="src/Translator.Inference/Translator.Inference.csproj" />
+    <Project Path="src/Translator.Platform.Windows/Translator.Platform.Windows.csproj" />
+  </Folder>
+</Solution>

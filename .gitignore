@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+.nuget-cache/
+runtime/
+*.user
+*.suo
+*.gguf
+translater.local.json
+overlay-positions.json

@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>桌面翻译技术方案 · Translator</title><style>
+:root{color-scheme:light;--ink:#132a27;--muted:#4b6260;--line:#c9dad6;--accent:#146151;--soft:#edf7f3;--paper:#fff;--error:#9d4235}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f8f7;color:var(--ink);font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}
+header{background:#153d36;color:white;padding:3rem clamp(1rem,5vw,4.5rem) 2.35rem}
+header>div,main{max-width:1080px;margin:auto}
+header h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.2;margin:0 0 .7rem}
+header p{margin:0;max-width:55rem;color:#d7ebe5}
+nav{display:flex;flex-wrap:wrap;gap:.6rem 1.4rem;margin-top:1.35rem}
+header a{color:#f0fffb}
+main{padding:0 clamp(.85rem,4vw,2.5rem) 3rem}
+section{margin-top:1.25rem;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:clamp(1rem,3vw,2rem)}
+h2,h3{line-height:1.35;margin:.1rem 0 .75rem}
+h3{margin-top:1.35rem}
+p,ol,ul{margin:.5rem 0 .9rem}
+a{color:var(--accent)}
+code{background:var(--soft);padding:.08em .27em;border-radius:4px;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;text-align:left}
+th,td{padding:.55rem .75rem;border-bottom:1px solid var(--line);vertical-align:top}
+thead{background:var(--soft)}
+.table{overflow-x:auto}
+.note{color:var(--muted);font-size:.92rem}
+.diagram{overflow-x:auto;background:#f9fcfb;border:1px solid var(--line);border-radius:9px;padding:8px}
+figure{margin:1rem 0 1.5rem}
+svg{width:100%;min-width:720px;display:block;height:auto}
+.node rect{fill:#fff;stroke:#9bb9b1}
+.node.desktop rect{fill:#dbf0e8;stroke:#6b9e8d}
+.node.port rect{fill:#e9f4f2;stroke:#9bb9b1}
+.type{font:600 12px Consolas,"Microsoft YaHei",sans-serif;fill:var(--ink)}
+.detail{font:12px system-ui,"Microsoft YaHei",sans-serif;fill:var(--muted)}
+.column{font:600 15px system-ui,"Microsoft YaHei",sans-serif;fill:var(--accent)}
+.edge{fill:none;stroke:#44766b;stroke-width:1.55}
+.edge.realizes,.edge.returns,.lifeline{stroke-dasharray:5 4}
+.edge.cancel{stroke:var(--error);stroke-dasharray:5 4}
+.lifeline{stroke:#acc3bd;stroke-width:1}
+.message{font:12px system-ui,"Microsoft YaHei",sans-serif;fill:var(--ink);stroke:#f9fcfb;stroke-width:4px;paint-order:stroke fill;stroke-linejoin:round}
+figcaption{font-size:.92rem;color:var(--muted);margin-top:.45rem}
+.refs a{margin-right:1rem}
+@media print{body{background:white}
+section{break-inside:avoid}
+svg{min-width:0}
+}
+</style></head>
+<body><header><div><h1>桌面翻译技术方案</h1><p>Windows 首版的需求、模块边界、交互和运行流程。重点支持英语、日语到简体中文。</p><nav aria-label="文档目录"><a href="#scope">需求与交互</a><a href="#class">类图</a><a href="#sequence">时序图</a><a href="#config">配置</a><a href="#ports">移植与验证</a><a href="流式音频字幕设计.html">音频细节</a></nav></div></header>
+<main>
+<section id="scope"><h2>需求与交互</h2>
+<div class="table"><table><thead><tr><th>入口</th><th>触发和显示</th><th>完成条件</th></tr></thead><tbody>
+<tr><th>托盘 · 选区翻译</th><td>读取稳定选区。Zotero 和 SumatraPDF 在必要时读取可复制选区并恢复剪贴板。译文浮层靠近选区，提供复制和关闭。</td><td>当前浮层可拖动。下一次选区重新定位。</td></tr>
+<tr><th>Ctrl + Alt + O</th><td>一次框选后持续识别。边缘拖动，角落缩放，悬停显示暂停和关闭图标。译文窗位置可拖动并保存。</td><td>相同文字沿用当前译文。新文字取消过期翻译，确认空白后清除译文。</td></tr>
+<tr><th>托盘选择音频程序或 Ctrl + Alt + S</th><td>采集程序及其子进程的音频。即时译文流式更新，空档用相邻原文修订字幕。标题栏用于拖动，会话重开时恢复位置。</td><td>可回看最近的字幕，支持双语显示。停止、换源和关闭窗口会取消当前会话。</td></tr>
+</tbody></table></div>
+<p>检测为中文的内容跳过翻译。设置中的同一个模型供三个入口使用。开启功能时预加载，切换模型、托盘手动释放、退出或空闲到期时释放模型。</p>
+</section>
+<section id="class"><h2>软件架构与类图</h2>
+<p><code>Translator.Desktop</code> 持有 UI 与会话生命周期。<code>Translator.Core</code> 定义数据、服务契约和 OCR／字幕调度。<code>Translator.Platform.Windows</code> 提供 Windows 采集与设备发现。<code>Translator.Inference</code> 实现 PaddleOCR、Whisper 与 llama.cpp 客户端。</p>
+<figure><div class="diagram"><svg viewBox="0 0 960 785" role="img" aria-labelledby="types-title" xmlns="http://www.w3.org/2000/svg">
+<title id="types-title">类图 · 桌面控制器编排用例，平台和推理通过 Core 契约接入</title>
+<defs>
+<marker id="types-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="306" y="16" width="348" height="60" rx="9" />
+<text x="480" y="39" class="type" text-anchor="middle">WindowsDesktopController</text>
+<text x="480" y="60" class="detail" text-anchor="middle">功能开关、会话取消和窗口更新</text>
+</g>
+<path class="edge " d="M480,76 V106 M129,106 H834"/>
+<path class="edge " d="M129,106 V132" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="132" width="222" height="64" rx="9" />
+<text x="129" y="155" class="type" text-anchor="middle">WindowsSelectedTextSource</text>
+<text x="129" y="176" class="detail" text-anchor="middle">稳定选区 · PDF 读取</text>
+</g>
+<path class="edge " d="M364,106 V132" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="253" y="132" width="222" height="64" rx="9" />
+<text x="364" y="155" class="type" text-anchor="middle">ContinuousScreenReader</text>
+<text x="364" y="176" class="detail" text-anchor="middle">帧差 · 去重 · 识别</text>
+</g>
+<path class="edge " d="M599,106 V132" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="488" y="132" width="222" height="64" rx="9" />
+<text x="599" y="155" class="type" text-anchor="middle">AudioSubtitleSession</text>
+<text x="599" y="176" class="detail" text-anchor="middle">短句流式输出 · 段落修订</text>
+</g>
+<path class="edge " d="M834,106 V132" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="723" y="132" width="222" height="64" rx="9" />
+<text x="834" y="155" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="834" y="176" class="detail" text-anchor="middle">模型驻留 · HTTP / SSE</text>
+</g>
+<text x="28" y="241" class="column">使用方</text>
+<text x="357" y="241" class="column">Core 契约</text>
+<text x="682" y="241" class="column">实现</text>
+<g class="node ">
+<rect x="18" y="257" width="270" height="44" rx="9" />
+<text x="153" y="285" class="type" text-anchor="middle">WindowsDesktopController</text>
+</g>
+<g class="node port">
+<rect x="345" y="257" width="270" height="44" rx="9" />
+<text x="480" y="285" class="type" text-anchor="middle">ITextSelectionSource</text>
+</g>
+<g class="node ">
+<rect x="672" y="257" width="270" height="44" rx="9" />
+<text x="807" y="285" class="type" text-anchor="middle">WindowsSelectedTextSource</text>
+</g>
+<path class="edge " d="M288,279 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,279 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="311" width="270" height="44" rx="9" />
+<text x="153" y="339" class="type" text-anchor="middle">ContinuousScreenReader</text>
+</g>
+<g class="node port">
+<rect x="345" y="311" width="270" height="44" rx="9" />
+<text x="480" y="339" class="type" text-anchor="middle">IScreenCapture</text>
+</g>
+<g class="node ">
+<rect x="672" y="311" width="270" height="44" rx="9" />
+<text x="807" y="339" class="type" text-anchor="middle">WindowsScreenCapture</text>
+</g>
+<path class="edge " d="M288,333 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,333 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="365" width="270" height="44" rx="9" />
+<text x="153" y="393" class="type" text-anchor="middle">ContinuousScreenReader</text>
+</g>
+<g class="node port">
+<rect x="345" y="365" width="270" height="44" rx="9" />
+<text x="480" y="393" class="type" text-anchor="middle">IOpticalCharacterRecognizer</text>
+</g>
+<g class="node ">
+<rect x="672" y="365" width="270" height="44" rx="9" />
+<text x="807" y="393" class="type" text-anchor="middle">PaddleScreenOcr</text>
+</g>
+<path class="edge " d="M288,387 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,387 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="419" width="270" height="44" rx="9" />
+<text x="153" y="447" class="type" text-anchor="middle">AudioSubtitleSession</text>
+</g>
+<g class="node port">
+<rect x="345" y="419" width="270" height="44" rx="9" />
+<text x="480" y="447" class="type" text-anchor="middle">IApplicationAudioCapture</text>
+</g>
+<g class="node ">
+<rect x="672" y="419" width="270" height="44" rx="9" />
+<text x="807" y="447" class="type" text-anchor="middle">ProcessLoopbackCapture</text>
+</g>
+<path class="edge " d="M288,441 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,441 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="473" width="270" height="44" rx="9" />
+<text x="153" y="501" class="type" text-anchor="middle">AudioSubtitleSession</text>
+</g>
+<g class="node port">
+<rect x="345" y="473" width="270" height="44" rx="9" />
+<text x="480" y="501" class="type" text-anchor="middle">ISpeechTranscriber</text>
+</g>
+<g class="node ">
+<rect x="672" y="473" width="270" height="44" rx="9" />
+<text x="807" y="501" class="type" text-anchor="middle">WhisperSpeechTranscriber</text>
+</g>
+<path class="edge " d="M288,495 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,495 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="527" width="270" height="44" rx="9" />
+<text x="153" y="555" class="type" text-anchor="middle">AudioSubtitleSession</text>
+</g>
+<g class="node port">
+<rect x="345" y="527" width="270" height="44" rx="9" />
+<text x="480" y="555" class="type" text-anchor="middle">IStreamingSubtitleTranslator</text>
+</g>
+<g class="node ">
+<rect x="672" y="527" width="270" height="44" rx="9" />
+<text x="807" y="555" class="type" text-anchor="middle">LlamaTranslator</text>
+</g>
+<path class="edge " d="M288,549 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,549 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="581" width="270" height="44" rx="9" />
+<text x="153" y="609" class="type" text-anchor="middle">AudioSubtitleSession</text>
+</g>
+<g class="node port">
+<rect x="345" y="581" width="270" height="44" rx="9" />
+<text x="480" y="609" class="type" text-anchor="middle">ISubtitleParagraphTranslator</text>
+</g>
+<g class="node ">
+<rect x="672" y="581" width="270" height="44" rx="9" />
+<text x="807" y="609" class="type" text-anchor="middle">LlamaTranslator</text>
+</g>
+<path class="edge " d="M288,603 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,603 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="635" width="270" height="44" rx="9" />
+<text x="153" y="663" class="type" text-anchor="middle">WindowsDesktopController</text>
+</g>
+<g class="node ">
+<rect x="672" y="635" width="270" height="44" rx="9" />
+<text x="807" y="663" class="type" text-anchor="middle">LlamaTranslator</text>
+</g>
+<path class="edge " d="M288,657 H669" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,657 H618" marker-end="url(#types-arrow)"/>
+<g class="node ">
+<rect x="18" y="689" width="270" height="44" rx="9" />
+<text x="153" y="717" class="type" text-anchor="middle">LlamaTranslator</text>
+</g>
+<g class="node port">
+<rect x="345" y="689" width="270" height="44" rx="9" />
+<text x="480" y="717" class="type" text-anchor="middle">ILlamaRuntimeProvider</text>
+</g>
+<g class="node ">
+<rect x="672" y="689" width="270" height="44" rx="9" />
+<text x="807" y="717" class="type" text-anchor="middle">WindowsLlamaRuntimeProvider</text>
+</g>
+<path class="edge " d="M288,711 H342" marker-end="url(#types-arrow)"/>
+<path class="edge realizes" d="M672,711 H618" marker-end="url(#types-arrow)"/>
+<text x="25" y="770" class="detail">实线表示使用，虚线指向实现的接口。</text>
+</svg></div><figcaption>类图 · 桌面控制器编排用例，平台和推理通过 Core 契约接入</figcaption></figure>
+<p class="note">控制器持有独立的选区和 OCR 浮层。<code>AudioSubtitleWindow</code> 由每次音频会话创建。<code>SettingsStore</code> 分别保存用户偏好和两种长期窗口的位置。</p></section>
+<section id="sequence"><h2>时序图</h2>
+<figure><div class="diagram"><svg viewBox="0 0 980 515" role="img" aria-labelledby="selection-title" xmlns="http://www.w3.org/2000/svg">
+<title id="selection-title">时序 · 选区译文只移动当前窗口，下一次选区重新定位</title>
+<defs>
+<marker id="selection-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="7" y="14" width="170" height="52" rx="9" />
+<text x="92" y="37" class="type" text-anchor="middle">用户</text>
+<text x="92" y="58" class="detail" text-anchor="middle">阅读器 / PDF</text>
+</g>
+<line class="lifeline" x1="92" x2="92" y1="66" y2="500"/>
+<g class="node ">
+<rect x="206" y="14" width="170" height="52" rx="9" />
+<text x="291" y="37" class="type" text-anchor="middle">选区适配器</text>
+<text x="291" y="58" class="detail" text-anchor="middle">UIA / 复制回退</text>
+</g>
+<line class="lifeline" x1="291" x2="291" y1="66" y2="500"/>
+<g class="node ">
+<rect x="405" y="14" width="170" height="52" rx="9" />
+<text x="490" y="37" class="type" text-anchor="middle">桌面控制器</text>
+<text x="490" y="58" class="detail" text-anchor="middle">取消旧请求</text>
+</g>
+<line class="lifeline" x1="490" x2="490" y1="66" y2="500"/>
+<g class="node ">
+<rect x="604" y="14" width="170" height="52" rx="9" />
+<text x="689" y="37" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="689" y="58" class="detail" text-anchor="middle">串行推理</text>
+</g>
+<line class="lifeline" x1="689" x2="689" y1="66" y2="500"/>
+<g class="node ">
+<rect x="803" y="14" width="170" height="52" rx="9" />
+<text x="888" y="37" class="type" text-anchor="middle">CaptionOverlay</text>
+<text x="888" y="58" class="detail" text-anchor="middle">浮层</text>
+</g>
+<line class="lifeline" x1="888" x2="888" y1="66" y2="500"/>
+<path class="edge " d="M94,106 H288" marker-end="url(#selection-arrow)"/>
+<text x="191.5" y="98" class="message" text-anchor="middle">拖选文字</text>
+<path class="edge " d="M293,148 H487" marker-end="url(#selection-arrow)"/>
+<text x="390.5" y="140" class="message" text-anchor="middle">报告稳定选区</text>
+<path class="edge " d="M492,190 H885" marker-end="url(#selection-arrow)"/>
+<text x="689" y="182" class="message" text-anchor="middle">在选区旁显示等待提示</text>
+<path class="edge " d="M492,232 H686" marker-end="url(#selection-arrow)"/>
+<text x="589.5" y="224" class="message" text-anchor="middle">发送翻译请求</text>
+<path class="edge returns" d="M687,274 H493" marker-end="url(#selection-arrow)"/>
+<text x="589.5" y="266" class="message" text-anchor="middle">返回完整译文</text>
+<path class="edge " d="M492,316 H885" marker-end="url(#selection-arrow)"/>
+<text x="689" y="308" class="message" text-anchor="middle">在当前浮层显示译文</text>
+<path class="edge " d="M94,358 H885" marker-end="url(#selection-arrow)"/>
+<text x="490" y="350" class="message" text-anchor="middle">拖动当前译文窗</text>
+<path class="edge " d="M94,400 H288" marker-end="url(#selection-arrow)"/>
+<text x="191.5" y="392" class="message" text-anchor="middle">选择下一段</text>
+<path class="edge " d="M293,442 H487" marker-end="url(#selection-arrow)"/>
+<text x="390.5" y="434" class="message" text-anchor="middle">报告新选区</text>
+<path class="edge " d="M492,484 H885" marker-end="url(#selection-arrow)"/>
+<text x="689" y="476" class="message" text-anchor="middle">按新选区重新定位</text>
+</svg></div><figcaption>时序 · 选区译文只移动当前窗口，下一次选区重新定位</figcaption></figure><figure><div class="diagram"><svg viewBox="0 0 980 515" role="img" aria-labelledby="ocr-title" xmlns="http://www.w3.org/2000/svg">
+<title id="ocr-title">时序 · 持续 OCR 从选框变化到最新译文</title>
+<defs>
+<marker id="ocr-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="18.4" y="14" width="147.2" height="52" rx="9" />
+<text x="92" y="37" class="type" text-anchor="middle">桌面</text>
+<text x="92" y="58" class="detail" text-anchor="middle">DXGI / GDI</text>
+</g>
+<line class="lifeline" x1="92" x2="92" y1="66" y2="500"/>
+<g class="node ">
+<rect x="177.4" y="14" width="147.2" height="52" rx="9" />
+<text x="251" y="37" class="type" text-anchor="middle">屏幕适配器</text>
+<text x="251" y="58" class="detail" text-anchor="middle">选区帧</text>
+</g>
+<line class="lifeline" x1="251" x2="251" y1="66" y2="500"/>
+<g class="node ">
+<rect x="336.4" y="14" width="147.2" height="52" rx="9" />
+<text x="410" y="37" class="type" text-anchor="middle">ContinuousScreenReader</text>
+<text x="410" y="58" class="detail" text-anchor="middle">合并变化</text>
+</g>
+<line class="lifeline" x1="410" x2="410" y1="66" y2="500"/>
+<g class="node ">
+<rect x="496.4" y="14" width="147.2" height="52" rx="9" />
+<text x="570" y="37" class="type" text-anchor="middle">PaddleScreenOcr</text>
+<text x="570" y="58" class="detail" text-anchor="middle">识别</text>
+</g>
+<line class="lifeline" x1="570" x2="570" y1="66" y2="500"/>
+<g class="node ">
+<rect x="655.4" y="14" width="147.2" height="52" rx="9" />
+<text x="729" y="37" class="type" text-anchor="middle">桌面控制器</text>
+<text x="729" y="58" class="detail" text-anchor="middle">版本检查</text>
+</g>
+<line class="lifeline" x1="729" x2="729" y1="66" y2="500"/>
+<g class="node ">
+<rect x="814.4" y="14" width="147.2" height="52" rx="9" />
+<text x="888" y="37" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="888" y="58" class="detail" text-anchor="middle">本地翻译</text>
+</g>
+<line class="lifeline" x1="888" x2="888" y1="66" y2="500"/>
+<path class="edge " d="M94,106 H248" marker-end="url(#ocr-arrow)"/>
+<text x="171.5" y="98" class="message" text-anchor="middle">桌面更新或轮询</text>
+<path class="edge " d="M253,148 H407" marker-end="url(#ocr-arrow)"/>
+<text x="330.5" y="140" class="message" text-anchor="middle">交付最新选区帧</text>
+<path class="edge " d="M410,182 H438 V197 H412" marker-end="url(#ocr-arrow)"/>
+<text x="410" y="177" class="message" text-anchor="middle">精确帧差与去抖</text>
+<path class="edge " d="M412,232 H567" marker-end="url(#ocr-arrow)"/>
+<text x="490" y="224" class="message" text-anchor="middle">识别变化帧</text>
+<path class="edge returns" d="M568,274 H413" marker-end="url(#ocr-arrow)"/>
+<text x="490" y="266" class="message" text-anchor="middle">返回文本</text>
+<path class="edge " d="M412,316 H726" marker-end="url(#ocr-arrow)"/>
+<text x="569.5" y="308" class="message" text-anchor="middle">报告新文本或确认空白</text>
+<path class="edge cancel" d="M731,358 H885" marker-end="url(#ocr-arrow)"/>
+<text x="808.5" y="350" class="message" text-anchor="middle">取消旧译文请求</text>
+<path class="edge " d="M731,400 H885" marker-end="url(#ocr-arrow)"/>
+<text x="808.5" y="392" class="message" text-anchor="middle">提交最新待译文本</text>
+<path class="edge returns" d="M886,442 H732" marker-end="url(#ocr-arrow)"/>
+<text x="808.5" y="434" class="message" text-anchor="middle">返回译文</text>
+<path class="edge " d="M729,476 H757 V491 H731" marker-end="url(#ocr-arrow)"/>
+<text x="729" y="471" class="message" text-anchor="middle">仅当前版本上屏</text>
+</svg></div><figcaption>时序 · 持续 OCR 从选框变化到最新译文</figcaption></figure><figure><div class="diagram"><svg viewBox="0 0 980 683" role="img" aria-labelledby="audio-title" xmlns="http://www.w3.org/2000/svg">
+<title id="audio-title">时序 · 即时字幕与可撤销的段落修订</title>
+<defs>
+<marker id="audio-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="18.4" y="14" width="147.2" height="52" rx="9" />
+<text x="92" y="37" class="type" text-anchor="middle">WASAPI</text>
+<text x="92" y="58" class="detail" text-anchor="middle">所选程序音频</text>
+</g>
+<line class="lifeline" x1="92" x2="92" y1="66" y2="668"/>
+<g class="node ">
+<rect x="177.4" y="14" width="147.2" height="52" rx="9" />
+<text x="251" y="37" class="type" text-anchor="middle">Whisper</text>
+<text x="251" y="58" class="detail" text-anchor="middle">切块转写</text>
+</g>
+<line class="lifeline" x1="251" x2="251" y1="66" y2="668"/>
+<g class="node ">
+<rect x="336.4" y="14" width="147.2" height="52" rx="9" />
+<text x="410" y="37" class="type" text-anchor="middle">AudioSubtitleSession</text>
+<text x="410" y="58" class="detail" text-anchor="middle">时限和编号</text>
+</g>
+<line class="lifeline" x1="410" x2="410" y1="66" y2="668"/>
+<g class="node ">
+<rect x="496.4" y="14" width="147.2" height="52" rx="9" />
+<text x="570" y="37" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="570" y="58" class="detail" text-anchor="middle">客户端</text>
+</g>
+<line class="lifeline" x1="570" x2="570" y1="66" y2="668"/>
+<g class="node ">
+<rect x="655.4" y="14" width="147.2" height="52" rx="9" />
+<text x="729" y="37" class="type" text-anchor="middle">llama-server</text>
+<text x="729" y="58" class="detail" text-anchor="middle">本地推理</text>
+</g>
+<line class="lifeline" x1="729" x2="729" y1="66" y2="668"/>
+<g class="node ">
+<rect x="814.4" y="14" width="147.2" height="52" rx="9" />
+<text x="888" y="37" class="type" text-anchor="middle">字幕窗</text>
+<text x="888" y="58" class="detail" text-anchor="middle">按 ID 追加和修订</text>
+</g>
+<line class="lifeline" x1="888" x2="888" y1="66" y2="668"/>
+<path class="edge " d="M94,106 H248" marker-end="url(#audio-arrow)"/>
+<text x="171.5" y="98" class="message" text-anchor="middle">传递 PCM 帧</text>
+<path class="edge " d="M253,148 H407" marker-end="url(#audio-arrow)"/>
+<text x="330.5" y="140" class="message" text-anchor="middle">提交转写短句</text>
+<path class="edge " d="M412,190 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="182" class="message" text-anchor="middle">请求即时译文</text>
+<path class="edge " d="M572,232 H726" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="224" class="message" text-anchor="middle">发起 SSE 请求</text>
+<path class="edge returns" d="M727,274 H573" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="266" class="message" text-anchor="middle">返回流式片段</text>
+<path class="edge returns" d="M568,316 H413" marker-end="url(#audio-arrow)"/>
+<text x="490" y="308" class="message" text-anchor="middle">交付累计文本</text>
+<path class="edge " d="M412,358 H885" marker-end="url(#audio-arrow)"/>
+<text x="649" y="350" class="message" text-anchor="middle">用同一行 ID 流式更新</text>
+<path class="edge " d="M412,400 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="392" class="message" text-anchor="middle">空档中请求段落修订</text>
+<path class="edge " d="M572,442 H726" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="434" class="message" text-anchor="middle">请求逐行 JSON</text>
+<rect x="235" y="451" width="704" height="220" rx="5" fill="none" stroke="#91aaa2"/>
+<text x="247" y="466" class="detail">alt · 修订完成</text>
+<path class="edge returns" d="M727,484 H573" marker-end="url(#audio-arrow)"/>
+<text x="649.5" y="476" class="message" text-anchor="middle">返回修订结果</text>
+<path class="edge returns" d="M568,526 H413" marker-end="url(#audio-arrow)"/>
+<text x="490" y="518" class="message" text-anchor="middle">交付有效行</text>
+<path class="edge " d="M412,568 H885" marker-end="url(#audio-arrow)"/>
+<text x="649" y="560" class="message" text-anchor="middle">按行 ID 更新原译文</text>
+<path d="M235,584 H939" stroke="#91aaa2" stroke-dasharray="5 4"/>
+<text x="247" y="600" class="detail">else · 短句抢占</text>
+<path class="edge cancel" d="M253,635 H407" marker-end="url(#audio-arrow)"/>
+<text x="330.5" y="627" class="message" text-anchor="middle">修订期间有新短句</text>
+<path class="edge cancel" d="M412,652 H567" marker-end="url(#audio-arrow)"/>
+<text x="490" y="644" class="message" text-anchor="middle">取消修订并优先处理短句</text>
+</svg></div><figcaption>时序 · 即时字幕与可撤销的段落修订</figcaption></figure><figure><div class="diagram"><svg viewBox="0 0 980 473" role="img" aria-labelledby="runtime-title" xmlns="http://www.w3.org/2000/svg">
+<title id="runtime-title">时序 · 启用前预加载，所有入口共用一个模型实例</title>
+<defs>
+<marker id="runtime-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+<path d="M1,1 L8,4.5 L1,8" fill="none" stroke="context-stroke" stroke-width="1.4"/>
+</marker>
+</defs>
+<g class="node desktop">
+<rect x="7" y="14" width="170" height="52" rx="9" />
+<text x="92" y="37" class="type" text-anchor="middle">桌面控制器</text>
+<text x="92" y="58" class="detail" text-anchor="middle">共享当前设置</text>
+</g>
+<line class="lifeline" x1="92" x2="92" y1="66" y2="458"/>
+<g class="node ">
+<rect x="272" y="14" width="170" height="52" rx="9" />
+<text x="357" y="37" class="type" text-anchor="middle">LlamaTranslator</text>
+<text x="357" y="58" class="detail" text-anchor="middle">模型生命周期</text>
+</g>
+<line class="lifeline" x1="357" x2="357" y1="66" y2="458"/>
+<g class="node ">
+<rect x="538" y="14" width="170" height="52" rx="9" />
+<text x="623" y="37" class="type" text-anchor="middle">运行时适配器</text>
+<text x="623" y="58" class="detail" text-anchor="middle">设备发现</text>
+</g>
+<line class="lifeline" x1="623" x2="623" y1="66" y2="458"/>
+<g class="node ">
+<rect x="803" y="14" width="170" height="52" rx="9" />
+<text x="888" y="37" class="type" text-anchor="middle">llama-server</text>
+<text x="888" y="58" class="detail" text-anchor="middle">单槽进程</text>
+</g>
+<line class="lifeline" x1="888" x2="888" y1="66" y2="458"/>
+<path class="edge " d="M94,106 H354" marker-end="url(#runtime-arrow)"/>
+<text x="224.5" y="98" class="message" text-anchor="middle">启用功能或发起首个请求</text>
+<path class="edge " d="M359,148 H620" marker-end="url(#runtime-arrow)"/>
+<text x="490" y="140" class="message" text-anchor="middle">获取 CUDA / Vulkan / CPU 候选</text>
+<path class="edge returns" d="M621,190 H360" marker-end="url(#runtime-arrow)"/>
+<text x="490" y="182" class="message" text-anchor="middle">返回候选及设备信息</text>
+<path class="edge " d="M359,232 H885" marker-end="url(#runtime-arrow)"/>
+<text x="622.5" y="224" class="message" text-anchor="middle">启动子进程并查询 health</text>
+<path class="edge returns" d="M886,274 H360" marker-end="url(#runtime-arrow)"/>
+<text x="622.5" y="266" class="message" text-anchor="middle">模型就绪</text>
+<path class="edge " d="M94,316 H354" marker-end="url(#runtime-arrow)"/>
+<text x="224.5" y="308" class="message" text-anchor="middle">请求翻译或修订</text>
+<path class="edge " d="M359,358 H885" marker-end="url(#runtime-arrow)"/>
+<text x="622.5" y="350" class="message" text-anchor="middle">串行发送请求</text>
+<path class="edge " d="M94,400 H354" marker-end="url(#runtime-arrow)"/>
+<text x="224.5" y="392" class="message" text-anchor="middle">切换模型、手动释放或退出</text>
+<path class="edge " d="M359,442 H885" marker-end="url(#runtime-arrow)"/>
+<text x="622.5" y="434" class="message" text-anchor="middle">结束进程并回收驻留状态</text>
+</svg></div><figcaption>时序 · 启用前预加载，所有入口共用一个模型实例</figcaption></figure>
+<p>DXGI 先用脏矩形和移动矩形过滤选框外更新，再只读回选框。旋转屏幕和 DXGI 不可用的会话回退到 GDI。划词、OCR 与段落修订读取完整响应，即时字幕通过 SSE 出字。</p>
+<p>llama.cpp 按 token 前缀复用单槽中的可用状态。前缀变化的部分重新计算。GPU 默认先选 CUDA，之后可尝试已安装的 Vulkan，CPU 回退由设置控制。子进程仅监听本机环回地址并使用每次启动生成的密钥。</p>
+<p class="refs"><a href="https://learn.microsoft.com/windows/win32/direct3ddxgi/desktop-dup-api">DXGI Desktop Duplication</a><a href="https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/">WASAPI 程序回环</a><a href="https://github.com/ggml-org/llama.cpp/blob/b12631/tools/server/README.md">llama.cpp 服务接口</a></p>
+</section>
+<section id="config"><h2>配置与模型</h2>
+<div class="table"><table><thead><tr><th>文件</th><th>内容</th></tr></thead><tbody>
+<tr><th><code>translator.runtime.json</code></th><td>质量／轻量模型默认文件名，推理上下文与生成预算，显存和进程时限，OCR 和 DXGI 等待时间，字幕队列，Whisper 分段与 Windows 设备参数。</td></tr>
+<tr><th><code>runtime.assets.json</code></th><td>固定版本的 CUDA／Vulkan 运行包、PaddleOCR 和 Whisper 资产，以及 SHA-256 校验值。初始化脚本读取该清单。</td></tr>
+<tr><th><code>translater.local.json</code> 或用户设置</th><td>模型目录、所选文件、语种、GPU 与 CPU 回退、快捷键和字幕偏好。设置页继续读取已有配置。</td></tr>
+<tr><th><code>overlay-positions.json</code></th><td>OCR 与音频窗的独立位置。恢复时按当前屏幕工作区约束窗口位置。</td></tr>
+</tbody></table></div>
+<p>运行配置可通过 <code>TRANSLATOR_CONFIG_PATH</code> 指定，使用完整配置文件。配置无效时界面状态会说明原因，并使用编译时嵌入的默认值。</p>
+<p>质量模型的默认文件是 Qwen3.5-9B Q4_K_M，轻量文件是 Qwen3.5-4B Q4_K_M。模型目录应包含可读取的 GGUF 文件。显存由所选权重、上下文缓存和计算缓冲共同决定。</p></section>
+<section id="ports"><h2>移植边界与验证</h2>
+<p>Windows 首版使用 UI Automation、DXGI/GDI、WASAPI Process Loopback 和 Windows 托盘。macOS 与 Linux 可以在相同契约下提供选区、选框采集、程序音频及推理运行时适配器。平台 UI 和权限交互也在各自的宿主层实现。</p>
+<ul><li>运行 <code>dotnet build -c Release</code> 并检查 <code>--check-models</code> 的模型和设备候选。</li>
+<li>手动覆盖静态 PDF、持续滚动、切换屏幕、OCR 空白复核、选区重定位及窗口恢复。</li>
+<li>使用所选程序播放英日音频，验证即时字幕、段落修订和关闭后的资源释放。</li></ul>
+<p class="refs"><a href="../README.md">使用说明</a><a href="../LICENSE">MIT 许可证</a></p></section></main></body></html>
