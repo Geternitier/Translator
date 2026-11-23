@@ -1,15 +1,12 @@
 using System.Runtime.InteropServices;
 using Avalonia;
-using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Translator.Core;
 using Translator.Platform.Windows;
 
@@ -158,7 +155,7 @@ internal static class OverlayGeometry
     }
 }
 
-internal sealed class FloatingOverlay : Window
+internal class FloatingOverlay : Window
 {
     private bool clickThrough;
 
@@ -189,10 +186,14 @@ internal sealed class FloatingOverlay : Window
 
 internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : IDisposable
 {
-    private static readonly Geometry CopyGlyph = Geometry.Parse("M 5,1 L 12,1 12,3 10,3 10,2 5,2 Z M 11,4 L 14,4 14,14 5,14 5,11 2,11 2,3 11,3 Z M 3,4 L 3,10 5,10 5,5 10,5 10,4 Z M 6,6 L 6,13 13,13 13,6 Z");
-    private static readonly Geometry CopiedGlyph = Geometry.Parse("M 2,7 L 3,6 6,9 12,3 13,4 6,11 Z");
-    private static readonly Geometry CloseGlyph = Geometry.Parse("M 3,2 L 7,6 11,2 12,3 8,7 12,11 11,12 7,8 3,12 2,11 6,7 2,3 Z");
+    internal static readonly IBrush Surface = new SolidColorBrush(Color.FromArgb(236, 17, 30, 30));
     private FloatingOverlay? window;
+    private TextBlock? label;
+    private Border? panel;
+    private CaptionActions? actions;
+    private (DesktopDisplay Display, ScreenRegion? Anchor, int BottomOffset, OverlayPosition? SavedPosition) layout;
+    private int fontSize = AppSettings.DefaultSubtitleFontSize;
+    private bool draggable;
     private DispatcherTimer? timer;
     private OverlayPosition? draggedPosition;
     private IPointer? dragPointer;
@@ -200,9 +201,10 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
     private PixelPoint firstPosition;
     private bool dragMoved;
 
-    public void Show(string text, DesktopDisplay display, ScreenRegion? anchor = null, int fontSize = 17,
+    public void Show(string text, DesktopDisplay display, ScreenRegion? anchor = null,
         int bottomOffset = 64, TimeSpan? duration = null, bool copyable = false, Action? close = null,
-        bool draggable = false, bool keepDraggedPosition = false, OverlayPosition? savedPosition = null)
+        bool draggable = false, bool keepDraggedPosition = false, OverlayPosition? savedPosition = null,
+        Action? stop = null)
     {
         if (string.IsNullOrWhiteSpace(text)) { Clear(); return; }
 
@@ -215,42 +217,17 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
             draggedPosition = null;
         }
 
-        OverlayPosition? placement = draggable ? draggedPosition ?? savedPosition : null;
-        if (placement is { } preferred) display = WindowsScreenCapture.DisplayAt(preferred.X, preferred.Y);
-        double scale = OverlayGeometry.ScaleAt(window, display);
-        double widthLimit = Math.Min(anchor is null ? 920 : 520, display.Width / scale - 24);
-        var label = new TextBlock
-        {
-            Text = text, Foreground = Brushes.White, FontSize = fontSize,
-            TextWrapping = TextWrapping.Wrap, TextAlignment = anchor is null ? TextAlignment.Center : TextAlignment.Left
-        };
-        bool interactive = copyable || close is not null;
-        var panel = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(236, 17, 30, 30)), CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(15, 9), MaxWidth = widthLimit, MaxHeight = display.Height / scale / 2,
-            ClipToBounds = true,
-            Child = interactive ? WithActions(() => window?.Clipboard, label, text, copyable, close) : label
-        };
-        panel.Measure(new Size(widthLimit, panel.MaxHeight));
-        int width = (int)Math.Ceiling(panel.DesiredSize.Width * scale);
-        int height = (int)Math.Ceiling(panel.DesiredSize.Height * scale);
-        if (draggable)
-        {
-            panel.Cursor = new Cursor(StandardCursorType.SizeAll);
-            panel.PointerPressed += BeginDrag;
-        }
-
-        window.Content = panel;
+        TextBlock caption = label!;
+        Border surface = panel!;
+        caption.Text = text;
+        caption.TextAlignment = anchor is null ? TextAlignment.Center : TextAlignment.Left;
+        this.draggable = draggable;
+        surface.Cursor = draggable ? new Cursor(StandardCursorType.SizeAll) : null;
+        bool interactive = copyable || close is not null || stop is not null;
+        actions!.SetActions(interactive, copyable ? GetCopyText : null, stop, close);
         window.SetClickThrough(!interactive && !draggable);
-        if (dragPointer is null)
-        {
-            int x = anchor is { } area ? area.X : (display.Width - width) / 2;
-            int y = anchor is { } selection ? selection.Y + selection.Height + 12 : display.Height - height - (int)(bottomOffset * scale);
-            if (anchor is { } region && y + height > display.Height - 8) y = region.Y - height - 12;
-            var target = placement is { } p ? new PixelPoint(p.X, p.Y) : new PixelPoint(display.X + x, display.Y + y);
-            window.Position = OverlayGeometry.KeepVisible(window, display, target, width, height);
-        }
+        layout = (display, anchor, bottomOffset, savedPosition);
+        LayoutCaption(window, surface);
         if (!window.IsVisible) window.Show();
 
         if (duration is { } delay)
@@ -258,15 +235,56 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
             timer = new DispatcherTimer { Interval = delay };
             timer.Tick += (_, _) =>
             {
-                if (dragPointer is null && (!(interactive || draggable) || !panel.IsPointerOver)) Clear();
+                if (dragPointer is null && !actions.IsEngaged && (!draggable || !surface.IsPointerOver)) Clear();
             };
             timer.Start();
         }
     }
 
+    public void SetFontSize(int value)
+    {
+        if (fontSize == value) return;
+        fontSize = value;
+        if (label is null) return;
+        label.FontSize = value;
+        if (window?.IsVisible == true) LayoutCaption(window, panel!);
+    }
+
+    private void LayoutCaption(FloatingOverlay overlay, Border surface)
+    {
+        var (display, anchor, bottomOffset, savedPosition) = layout;
+        OverlayPosition? placement = draggable ? draggedPosition ?? savedPosition : null;
+        if (placement is { } preferred) display = WindowsScreenCapture.DisplayAt(preferred.X, preferred.Y);
+        double scale = OverlayGeometry.ScaleAt(overlay, display);
+        double widthLimit = Math.Min(anchor is null ? 920 : 520, display.Width / scale - 24);
+        surface.MaxWidth = widthLimit;
+        surface.MaxHeight = display.Height / scale / 2;
+        surface.Measure(new Size(widthLimit, surface.MaxHeight));
+        if (dragPointer is not null) return;
+
+        int width = (int)Math.Ceiling(surface.DesiredSize.Width * scale);
+        int height = (int)Math.Ceiling(surface.DesiredSize.Height * scale);
+        int x = anchor is { } area ? area.X : (display.Width - width) / 2;
+        int y = anchor is { } selection ? selection.Y + selection.Height + 12 : display.Height - height - (int)(bottomOffset * scale);
+        if (anchor is { } region && y + height > display.Height - 8) y = region.Y - height - 12;
+        var target = placement is { } p ? new PixelPoint(p.X, p.Y) : new PixelPoint(display.X + x, display.Y + y);
+        overlay.Position = OverlayGeometry.KeepVisible(overlay, display, target, width, height);
+    }
+
+    private string GetCopyText() => label?.Text ?? "";
+
     private FloatingOverlay CreateWindow()
     {
         var overlay = new FloatingOverlay { SizeToContent = SizeToContent.WidthAndHeight };
+        label = new TextBlock { Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = fontSize };
+        panel = new Border
+        {
+            Background = Surface, CornerRadius = new CornerRadius(8), Padding = new Thickness(15, 9),
+            ClipToBounds = true, Child = label
+        };
+        panel.PointerPressed += BeginDrag;
+        overlay.Content = panel;
+        actions = new CaptionActions(overlay);
         overlay.PointerMoved += MoveDrag;
         overlay.PointerReleased += (_, args) =>
         {
@@ -285,8 +303,8 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
 
     private void BeginDrag(object? sender, PointerPressedEventArgs args)
     {
-        if (window is null || dragPointer is not null || !args.GetCurrentPoint(window).Properties.IsLeftButtonPressed
-            || (args.Source is Visual visual && visual.GetSelfAndVisualAncestors().Any(control => control is Button))) return;
+        if (!draggable || window is null || dragPointer is not null
+            || !args.GetCurrentPoint(window).Properties.IsLeftButtonPressed) return;
 
         (int x, int y) = WindowsScreenCapture.CursorPosition();
         firstPointer = new PixelPoint(x, y);
@@ -317,64 +335,24 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
         if (dragMoved && draggedPosition is { } position) moved?.Invoke(position);
     }
 
-    private static Grid WithActions(Func<IClipboard?> getClipboard, TextBlock label, string text, bool copyable, Action? close)
-    {
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Top };
-        if (copyable) actions.Children.Add(CreateCopyButton(getClipboard, text));
-        if (close is not null)
-        {
-            Button closeButton = CreateActionButton(CloseGlyph, "关闭译文");
-            closeButton.Click += (_, _) => close();
-            actions.Children.Add(closeButton);
-        }
-
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
-        Grid.SetColumn(actions, 1);
-        grid.Children.Add(label);
-        grid.Children.Add(actions);
-        return grid;
-    }
-
-    private static Button CreateActionButton(Geometry glyph, string label)
-    {
-        var button = new Button
-        {
-            Content = new PathIcon { Data = glyph, Width = 16, Height = 16, Foreground = Brushes.White },
-            Padding = new Thickness(5), Focusable = false, Cursor = new Cursor(StandardCursorType.Hand)
-        };
-        AutomationProperties.SetName(button, label);
-        ToolTip.SetTip(button, label);
-        return button;
-    }
-
-    private static Button CreateCopyButton(Func<IClipboard?> getClipboard, string text)
-    {
-        Button button = CreateActionButton(CopyGlyph, "复制译文");
-        button.Click += async (_, _) =>
-        {
-            if (getClipboard() is not { } clipboard) return;
-            try
-            {
-                await clipboard.SetTextAsync(text);
-                ((PathIcon)button.Content!).Data = CopiedGlyph;
-                ToolTip.SetTip(button, "已复制");
-            }
-            catch (Exception)
-            {
-                ToolTip.SetTip(button, "复制失败，请重试");
-            }
-        };
-        return button;
-    }
-
     public void Clear()
     {
         timer?.Stop();
         timer = null;
+        actions?.Hide();
         FinishDrag();
         draggedPosition = null;
         window?.Hide();
     }
 
-    public void Dispose() { Clear(); window?.Close(); window = null; }
+    public void MarkStopped() => actions?.MarkStopped();
+
+    public void Dispose()
+    {
+        Clear();
+        actions?.Dispose();
+        actions = null;
+        window?.Close();
+        window = null;
+    }
 }

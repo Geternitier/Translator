@@ -1,8 +1,8 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Translator.Core;
-using Translator.Inference;
 using Translator.Platform.Windows;
 
 namespace Translator.Desktop;
@@ -14,9 +14,11 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     private readonly WindowsScreenCapture screen = new(RuntimePaths.Configuration.Options.Ocr);
     private readonly ITextSelectionSource selection;
     private readonly IAudioSourceCatalog sources;
-    private readonly AudioSubtitleSession subtitles;
-    private readonly PaddleScreenOcr ocr = new(RuntimePaths.OcrDirectory);
-    private readonly LlamaTranslator translator;
+    private readonly IApplicationAudioCapture audioCapture;
+    private readonly Func<AppSettings, ISpeechTranscriber> createSpeechTranscriber;
+    private readonly Func<AppSettings, ISpeakerDiarizer?> createSpeakerDiarizer;
+    private readonly IOpticalCharacterRecognizer ocr;
+    private readonly ITranslationService translator;
     private readonly CaptionOverlay instantCaption = new();
     private readonly CaptionOverlay ocrCaption;
     private readonly DispatcherTimer placementTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
@@ -49,13 +51,18 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     private int hotkeyRegistration;
 
     public WindowsDesktopController(Action<string> setTrayTooltip, NativeMenu menu, Action openTrayMenu,
-        IAudioSourceCatalog sources, IApplicationAudioCapture capture, ISpeechTranscriber speech,
-        ILlamaRuntimeProvider llamaRuntimeProvider)
+        IAudioSourceCatalog sources, IApplicationAudioCapture capture, Func<AppSettings, ISpeechTranscriber> createSpeechTranscriber,
+        Func<AppSettings, ISpeakerDiarizer?> createSpeakerDiarizer,
+        IOpticalCharacterRecognizer ocr, Func<Func<AppSettings>, Func<bool>, ITranslationService> createTranslationService)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         this.setTrayTooltip = setTrayTooltip;
         this.openTrayMenu = openTrayMenu;
         this.sources = sources;
+        audioCapture = capture;
+        this.createSpeechTranscriber = createSpeechTranscriber;
+        this.createSpeakerDiarizer = createSpeakerDiarizer;
+        this.ocr = ocr;
         selection = new WindowsSelectedTextSource(tuning.Llama.MaxInputCharacters);
         placements = store.LoadOverlayPositions();
         ocrCaption = new CaptionOverlay(position => RememberPositions(placements with { Ocr = position }));
@@ -63,9 +70,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         SettingsLoadResult loaded = store.Load();
         settings = loaded.Settings;
         feedback = loaded.Error;
-        translator = new LlamaTranslator(ReadTranslationOptions, llamaRuntimeProvider, tuning.Llama,
+        translator = createTranslationService(() => Volatile.Read(ref settings),
             () => IsSelectionOrOcrActive() || Volatile.Read(ref audioRun) is not null);
-        subtitles = new AudioSubtitleSession(capture, speech, translator, translator, tuning.Audio);
 
         autoMenu = TrayMenu.Add(menu, "选区翻译", ToggleAutoSelection);
         regionMenu = TrayMenu.Add(menu, "持续 OCR", ToggleContinuousOcr);
@@ -89,8 +95,12 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     {
         ShortcutSettings previousShortcuts = settings.Shortcuts;
         SourceLanguage previousLanguage = settings.SourceLanguage;
-        bool modelChanged = TranslationOptionsFor(settings) != TranslationOptionsFor(changed);
+        bool modelChanged = TranslationSettings(settings) != TranslationSettings(changed);
+        bool audioBackendChanged = settings.AudioAsrBackend != changed.AudioAsrBackend
+            || settings.AudioAsrModelDirectory != changed.AudioAsrModelDirectory || settings.SpeakerLabels != changed.SpeakerLabels;
         Volatile.Write(ref settings, changed);
+        instantCaption.SetFontSize(changed.SubtitleFontSize);
+        ocrCaption.SetFontSize(changed.SubtitleFontSize);
         feedback = null;
         if (hotkeys is null || shortcutRegistrationFailed || previousShortcuts != changed.Shortcuts) RegisterHotkeys();
         bool startingSelection = settings.AutoSelection && autoRun is null;
@@ -114,7 +124,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         }
         if ((modelChanged || previousLanguage != changed.SourceLanguage) && watchedRegion is { } area && ocrRun is not null)
             StartOcr(area);
-        if ((modelChanged || previousLanguage != changed.SourceLanguage) && audioRun is not null && selectedAudio is { } source)
+        if ((modelChanged || audioBackendChanged || previousLanguage != changed.SourceLanguage)
+            && audioRun is not null && selectedAudio is { } source)
             StartAudio(source);
         else audioWindow?.ApplySettings(changed);
         if (startingSelection || (modelChanged && settings.AutoSelection)) PrepareModel();
@@ -151,10 +162,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         Run(translator.ReleaseAsync);
     }
 
-    private LlamaOptions ReadTranslationOptions() => TranslationOptionsFor(Volatile.Read(ref settings));
-
-    internal static LlamaOptions TranslationOptionsFor(AppSettings current) => new(current.ModelDirectory, current.ModelFileName,
-        current.LlamaExecutable, current.UseGpu, current.AllowCpuFallback);
+    private static (string, string, string, bool, bool) TranslationSettings(AppSettings current) =>
+        (current.ModelDirectory, current.ModelFileName, current.LlamaExecutable, current.UseGpu, current.AllowCpuFallback);
 
     private void RegisterHotkeys()
     {
@@ -241,18 +250,48 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     {
         if (!TranslationText.NeedsTranslation(selected.Text)) { instantCaption.Clear(); return; }
         ScreenRegion anchor = selected.Region ?? CursorAnchor();
-        ShowInstant("正在翻译…", anchor, close: DismissSelection, draggable: true);
-        string translated = await TranslateAsync(selected.Text, TranslationSource.Selection, [], token);
+        string displayed = "";
+        ShowInstant("正在翻译…", anchor, close: DismissSelection, draggable: true, stop: Stop);
+        string translated = await RenderTranslationAsync(selected.Text, TranslationSource.Selection, text =>
+        {
+            displayed = text;
+            ShowInstant(text, anchor, copyable: true, close: DismissSelection, draggable: true,
+                keepDraggedPosition: true, stop: Stop);
+        }, token);
         token.ThrowIfCancellationRequested();
         ShowInstant(translated, anchor, TimeSpan.FromSeconds(Math.Clamp(translated.Length / 9.0, 5, 14)),
             copyable: true, close: DismissSelection, draggable: true, keepDraggedPosition: true);
+
+        void Stop()
+        {
+            if (token.IsCancellationRequested) return;
+            Cancel(ref instantRun);
+            ShowInstant(displayed.Length == 0 ? "已停止翻译" : displayed, anchor, copyable: displayed.Length != 0,
+                close: DismissSelection, draggable: true, keepDraggedPosition: true);
+        }
     }
 
-    private Task<string> TranslateAsync(string text, TranslationSource source, IReadOnlyList<string> context,
-        CancellationToken token, string? detectedLanguage = null)
+    private async Task<string> RenderTranslationAsync(string text, TranslationSource source, Action<string> render,
+        CancellationToken token)
     {
-        var request = new TranslationRequest(text, settings.SourceLanguage, source, context, detectedLanguage);
-        return translator.TranslateAsync(request, token).AsTask();
+        var request = new TranslationRequest(text, settings.SourceLanguage, source, []);
+        string latest = "";
+        string displayed = "";
+        long displayedAt = 0;
+        TimeSpan refresh = TimeSpan.FromMilliseconds(tuning.Audio.RefreshMs);
+        await foreach (string partial in translator.StreamTranslationAsync(request, token).WithCancellation(token))
+        {
+            token.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(partial)) continue;
+            latest = partial;
+            if (latest == displayed || (displayedAt != 0 && Stopwatch.GetElapsedTime(displayedAt) < refresh)) continue;
+            render(latest);
+            displayed = latest;
+            displayedAt = Stopwatch.GetTimestamp();
+        }
+        token.ThrowIfCancellationRequested();
+        if (latest != displayed) render(latest);
+        return latest;
     }
 
     private void ToggleContinuousOcr()
@@ -302,10 +341,14 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
                 translating = request;
                 try
                 {
-                    string translated = await TranslateAsync(text, TranslationSource.ContinuousOcr, [], request.Token);
-                    if (!request.IsCancellationRequested && version == newest && !pickerOpen)
-                        ocrCaption.Show(translated, WindowsScreenCapture.GetDisplay(region.DisplayId), region,
-                            draggable: true, keepDraggedPosition: true, savedPosition: placements.Ocr);
+                    DesktopDisplay display = WindowsScreenCapture.GetDisplay(region.DisplayId);
+                    await RenderTranslationAsync(text, TranslationSource.ContinuousOcr, translated =>
+                    {
+                        if (!request.IsCancellationRequested && version == newest && !pickerOpen)
+                            ocrCaption.Show(translated, display, region, copyable: true, close: StopOcr,
+                                draggable: true, keepDraggedPosition: true, savedPosition: placements.Ocr,
+                                stop: () => PauseOcr(keepCaption: true));
+                    }, request.Token);
                 }
                 catch (OperationCanceledException) when (request.IsCancellationRequested && !run.IsCancellationRequested) { }
                 finally { translating = null; }
@@ -349,14 +392,17 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     {
         if (watchedRegion is not { } region || resumeAfterAdjustment is not null) return;
         if (ocrRun is null) StartOcr(region);
-        else
-        {
-            Cancel(ref ocrRun);
-            CancelUnusedPreparation();
-            ocrCaption.Clear();
-            ocrFrame?.SetPaused(true);
-            RefreshMenu();
-        }
+        else PauseOcr();
+    }
+
+    private void PauseOcr(bool keepCaption = false)
+    {
+        Cancel(ref ocrRun);
+        CancelUnusedPreparation();
+        if (keepCaption) ocrCaption.MarkStopped();
+        else ocrCaption.Clear();
+        ocrFrame?.SetPaused(true);
+        RefreshMenu();
     }
 
     private void StopOcr()
@@ -427,7 +473,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         audioRun = run;
         var window = new AudioSubtitleWindow(source.DisplayName, WindowsScreenCapture.CursorDisplay(), settings,
-            placements.Audio, position => RememberPositions(placements with { Audio = position }));
+            placements.Audio, position => RememberPositions(placements with { Audio = position }),
+            () => StopAudio(keepWindow: true));
         audioWindow = window;
         window.Closed += (_, _) =>
         {
@@ -438,36 +485,44 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         window.Show();
         RefreshMenu();
         PrepareModel();
-        SourceLanguage language = settings.SourceLanguage;
-        Run(() => RunSubtitlesAsync(source, language, window, run));
+        AppSettings audioSettings = settings;
+        Run(() => RunSubtitlesAsync(source, audioSettings, window, run));
     }
 
-    private async Task RunSubtitlesAsync(AudioSource source, SourceLanguage language,
+    private async Task RunSubtitlesAsync(AudioSource source, AppSettings audioSettings,
         AudioSubtitleWindow window, CancellationTokenSource run)
     {
         try
         {
-            await foreach (IReadOnlyList<SubtitleLine> update in subtitles.RunAsync(source, language, run.Token))
+            var subtitles = new AudioSubtitleSession(createSpeechTranscriber(audioSettings), translator,
+                translator as ISubtitleParagraphTranslator, tuning.Audio, createSpeakerDiarizer(audioSettings));
+            await foreach (SubtitleUpdate update in subtitles.RunAsync(audioCapture.CaptureAsync(source, run.Token),
+                audioSettings.SourceLanguage, run.Token))
             {
                 if (run.IsCancellationRequested || !ReferenceEquals(audioRun, run)) break;
+                if (update is SubtitleUpdate.SpeakersUnavailable unavailable) feedback = unavailable.Message;
                 window.Apply(update);
             }
         }
         catch (Exception) when (!ReferenceEquals(audioRun, run)) { }
         finally
         {
-            if (ReferenceEquals(audioRun, run)) StopAudio();
+            if (ReferenceEquals(audioRun, run)) StopAudio(keepWindow: true);
             run.Dispose();
         }
     }
 
-    private void StopAudio(bool cancelPreparation = true)
+    private void StopAudio(bool cancelPreparation = true, bool keepWindow = false)
     {
         Cancel(ref audioRun);
         if (cancelPreparation) CancelUnusedPreparation();
-        AudioSubtitleWindow? window = audioWindow;
-        audioWindow = null;
-        if (window?.IsVisible == true) window.Close();
+        if (keepWindow) audioWindow?.MarkStopped();
+        else
+        {
+            AudioSubtitleWindow? window = audioWindow;
+            audioWindow = null;
+            if (window?.IsVisible == true) window.Close();
+        }
         RefreshMenu();
     }
 
@@ -490,13 +545,14 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     }
 
     private void ShowInstant(string text, ScreenRegion? area, TimeSpan? duration = null,
-        bool copyable = false, Action? close = null, bool draggable = false, bool keepDraggedPosition = false)
+        bool copyable = false, Action? close = null, bool draggable = false, bool keepDraggedPosition = false,
+        Action? stop = null)
     {
         if (pickerOpen || disposed) return;
         ScreenRegion anchor = area ?? CursorAnchor();
         instantCaption.Show(text, WindowsScreenCapture.GetDisplay(anchor.DisplayId), anchor,
             duration: duration, copyable: copyable, close: close,
-            draggable: draggable, keepDraggedPosition: keepDraggedPosition);
+            draggable: draggable, keepDraggedPosition: keepDraggedPosition, stop: stop);
     }
 
     private static ScreenRegion CursorAnchor()
@@ -553,7 +609,7 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         StopAudio();
         SavePendingPositions();
         ocrFrame?.Dispose();
-        await Task.Run(ocr.Dispose).ConfigureAwait(false);
+        if (ocr is IDisposable resource) await Task.Run(resource.Dispose).ConfigureAwait(false);
         await translator.DisposeAsync().ConfigureAwait(false);
         lifetime.Dispose();
     }

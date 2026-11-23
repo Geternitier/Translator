@@ -56,6 +56,11 @@ internal static class Program
         if (OperatingSystem.IsWindows())
         {
             AppSettings settings = result.Settings;
+            Console.WriteLine($"Audio ASR\t{settings.AudioAsrBackend}");
+            Console.WriteLine($"ONNX ASR model directory\t{RuntimePaths.AsrRoot(settings.AudioAsrModelDirectory)}");
+            Console.WriteLine($"Audio ASR model\t{RuntimePaths.FindAsrModel(settings) ?? "Missing"}");
+            bool diarizationAvailable = File.Exists(RuntimePaths.DiarizationLibrary) && File.Exists(RuntimePaths.DiarizationModel);
+            Console.WriteLine($"Speaker diarization\t{(diarizationAvailable ? "Available" : "Missing")}\t{(settings.SpeakerLabels ? "Enabled" : "Disabled")}");
             var runtimes = new WindowsLlamaRuntimeProvider(RuntimePaths.DirectoryPath, RuntimePaths.Configuration.Options.Windows);
             foreach (var runtime in runtimes.Resolve(settings.LlamaExecutable, settings.UseGpu, settings.AllowCpuFallback))
                 Console.WriteLine($"Runtime candidate\t{runtime.BackendName}\t{runtime.Executable}");

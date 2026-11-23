@@ -16,7 +16,7 @@ public sealed record LlamaOptions(
 
 public sealed class LlamaTranslator(Func<LlamaOptions> options, ILlamaRuntimeProvider runtimeProvider, LlamaTuning tuning,
     Func<bool>? keepWarm = null)
-    : IStreamingSubtitleTranslator, ISubtitleParagraphTranslator, IAsyncDisposable
+    : ITranslationService, ISubtitleParagraphTranslator, ISubtitlePrefill
 {
     private readonly SemaphoreSlim gate = new(1);
     private readonly CancellationTokenSource lifetime = new();
@@ -50,11 +50,34 @@ public sealed class LlamaTranslator(Func<LlamaOptions> options, ILlamaRuntimePro
     public ValueTask<string> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken) =>
         TranslateAsync(request, null, cancellationToken);
 
-    public async IAsyncEnumerable<string> StreamSubtitleAsync(TranslationRequest request,
+    public async Task TryPrefillAsync(TranslationRequest request, CancellationToken cancellationToken)
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
+        CancellationToken token = operation.Token;
+        if (!gate.Wait(0, token)) return;
+        try
+        {
+            Server? active = server;
+            if (active is null || active.Process.HasExited || active.Options != options()) return;
+            if (request.Text.Length > tuning.MaxInputCharacters) return;
+
+            // Use the same chat template as the final request so llama-server can reuse the matching tokens.
+            var body = CreateTranslationBody(request, stream: false, maxTokens: 0);
+            using HttpRequestMessage message = CreateCompletionRequest(active, body);
+            using HttpResponseMessage response = await http.SendAsync(message, token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+        }
+        finally { gate.Release(); }
+    }
+
+    public async IAsyncEnumerable<string> StreamTranslationAsync(TranslationRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var updates = Channel.CreateUnbounded<string>(new() { SingleReader = true, SingleWriter = true });
+        var updates = Channel.CreateBounded<string>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.DropOldest
+        });
         Task producer = ProduceAsync();
         try
         {
@@ -295,15 +318,20 @@ public sealed class LlamaTranslator(Func<LlamaOptions> options, ILlamaRuntimePro
         }
     }
 
-    private async Task<string> TranslateWithServerAsync(Server active, TranslationRequest request, Action<string>? update,
+    private Task<string> TranslateWithServerAsync(Server active, TranslationRequest request, Action<string>? update,
         CancellationToken token)
     {
-        var body = new
+        int maxTokens = request.Source == TranslationSource.AudioSubtitle ? tuning.SubtitleTokens : tuning.TextTokens;
+        return ReadCompletionAsync(active, CreateTranslationBody(request, update is not null, maxTokens), token, update);
+    }
+
+    private object CreateTranslationBody(TranslationRequest request, bool stream, int maxTokens) =>
+        new
         {
             model = "translator",
             temperature = tuning.TranslationTemperature,
-            max_tokens = request.Source == TranslationSource.AudioSubtitle ? tuning.SubtitleTokens : tuning.TextTokens,
-            stream = update is not null,
+            max_tokens = maxTokens,
+            stream,
             chat_template_kwargs = new { enable_thinking = false },
             messages = new[]
             {
@@ -311,14 +339,18 @@ public sealed class LlamaTranslator(Func<LlamaOptions> options, ILlamaRuntimePro
                 new { role = "user", content = TranslationPrompts.TranslateInput(request, tuning.ContextLineCharacters) }
             }
         };
-        return await ReadCompletionAsync(active, body, token, update).ConfigureAwait(false);
+
+    private static HttpRequestMessage CreateCompletionRequest(Server active, object body)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, new Uri(active.Endpoint, "v1/chat/completions"));
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", active.Key);
+        message.Content = JsonContent.Create(body);
+        return message;
     }
 
     private async Task<string> ReadCompletionAsync(Server active, object body, CancellationToken token, Action<string>? update = null)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(active.Endpoint, "v1/chat/completions"));
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", active.Key);
-        message.Content = JsonContent.Create(body);
+        using HttpRequestMessage message = CreateCompletionRequest(active, body);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(tuning.RequestSeconds));
         try

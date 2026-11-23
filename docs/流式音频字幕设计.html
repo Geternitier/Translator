@@ -43,10 +43,20 @@ section{break-inside:avoid}
 svg{min-width:0}
 }
 </style></head>
-<body><header><div><h1>流式音频字幕设计</h1><p>记录 Windows 程序音频到双层本地译文的实现和调度边界。</p><nav aria-label="文档目录"><a href="技术方案.html#sequence">技术方案与时序</a><a href="#capture">采集和转写</a><a href="#layers">字幕与修订</a><a href="#checks">验收</a></nav></div></header>
-<main><section id="capture"><h2>采集和转写</h2>
-<p>托盘列出可选择的应用程序。通过 <code>IApplicationAudioCapture</code> 获取所选进程树的音频，转换为 16 kHz 单声道 PCM。Windows 实现为 <code>ProcessLoopbackCapture</code>。停止或更换程序时，旧会话取消并回收采集资源。</p>
-<p><code>WhisperSpeechTranscriber</code> 按能量、句尾静音和最长块时限切分音频，逐块提交带起止时间和语种的结果。前置样本、静音阈值和分段时长由运行配置控制。</p></section>
+<body><header><div><h1>流式音频字幕设计</h1><p>描述音频输入、流式转写、翻译和可选预填之间的接口与调度。</p><nav aria-label="文档目录"><a href="技术方案.html#sequence">技术方案与时序</a><a href="#capture">输入与接口</a><a href="#prefill">预填</a><a href="#layers">字幕与修订</a><a href="#checks">验收</a></nav></div></header>
+<main><section id="capture"><h2>输入与接口</h2>
+<p>桌面入口负责选择音频来源，将 16 kHz、16-bit、单声道 PCM 的异步帧流传给 <code>AudioSubtitleSession</code>。帧时间戳以采集会话为起点。Windows 使用 <code>ProcessLoopbackCapture</code> 捕获所选进程树，文件回放或其他平台的采集器可以使用同一帧流契约。停止或更换程序时取消旧会话。</p>
+<div class="table"><table><thead><tr><th>接口</th><th>责任</th></tr></thead><tbody>
+<tr><th><code>ISpeechTranscriber</code></th><td>接收 PCM，依次报告当前短句的快照。每条快照带原文、相对时间和可选语种。临时结果可回改，稳定前缀长度用 UTF-16 码元计数。后端能保证字符稳定时才标记前缀。定稿关闭当前短句，下一条更新开始新句。断句策略由转写适配器决定。</td></tr>
+<tr><th><code>IStreamingTranslator</code></th><td>为三种翻译返回累计译文。音频请求提交定稿和近期原文。<code>ISubtitlePrefill</code> 和 <code>ISubtitleParagraphTranslator</code> 分别提供可选的缓存预填和段落修订。</td></tr>
+<tr><th><code>SubtitleUpdate</code></th><td>分别推送最新原文预览和按行 ID 更新的译文。空预览清除当前临时原文。双语模式显示预览，定稿和修订仍使用现有的字幕行。</td></tr>
+</tbody></table></div>
+<p>默认转写器 <code>WhisperSpeechTranscriber</code> 按能量、句尾静音和最长块时限切分音频，只报告定稿。Nemotron 按识别端点或时限提交短句，在字幕边界继续保留解码状态，并在相邻解码结果之间保留稳定前缀。Qwen3-ASR 本地 ONNX 与 Whisper 复用音频切块器，逐块输出定稿。桌面入口 <code>App.axaml.cs</code> 从设置选择转写适配器。<a href="README.Windows.md#音频转写模型">模型下载与安装</a></p></section>
+<section id="prefill"><h2>预填与定稿翻译的时序</h2>
+<ol><li>第一句定稿后进入翻译队列。翻译生成期间，转写任务继续接收第二句的音频，双语窗口可以显示第二句的临时原文。</li>
+<li>第一句译完且定稿队列为空时，如果第二句已有稳定前缀，支持预填的翻译器可以用相同的翻译指令、近期原文和稳定前缀准备缓存。每句尝试一次，默认预算为 500 ms，可用 <code>audio.prefillBudgetMs</code> 调整，设为 0 时停用。</li>
+<li>新定稿到达时取消正在进行的预填。正式翻译以完整定稿为输入，缓存命中和复用由推理适配器处理。预填超时、后端忙或后端不支持时，定稿照常翻译。</li></ol>
+<p>llama.cpp 适配器复用正式翻译的聊天模板，使用零输出预算的请求填充提示词缓存。匹配的 token 由服务端复用。默认 Whisper 路径没有临时前缀，因此不会产生主动预填请求。</p></section>
 <section id="layers"><h2>即时层和修订层</h2>
 <figure><div class="diagram"><svg viewBox="0 0 980 683" role="img" aria-labelledby="audio-title" xmlns="http://www.w3.org/2000/svg">
 <title id="audio-title">时序 · 即时字幕与可撤销的段落修订</title>
@@ -123,13 +133,16 @@ svg{min-width:0}
 <text x="330.5" y="627" class="message" text-anchor="middle">修订期间有新短句</text>
 <path class="edge cancel" d="M412,652 H567" marker-end="url(#audio-arrow)"/>
 <text x="490" y="644" class="message" text-anchor="middle">取消修订并优先处理短句</text>
-</svg></div><figcaption>时序 · 即时字幕与可撤销的段落修订</figcaption></figure>
+</svg></div><figcaption>默认 Windows、Whisper 和 llama.cpp 路径中的即时字幕与可撤销的段落修订。</figcaption></figure>
 <ol>
-<li>短句进入有界队列，队列满时优先保留新句。过期句和中文跳过。即时请求携带最近几条已确认原文，并在同一行 ID 上合并 SSE 片段。</li>
+<li>定稿进入有界队列，队列满时优先保留新句。过期句和中文跳过。即时请求携带最近几条原文，在同一行 ID 上更新累计译文。</li>
 <li>相邻短句满足行数和间隔时，字幕会话尝试空档修订。请求使用原文和行 ID，返回结构化逐行译文。有效结果替换原行。</li>
-<li>新短句到达时取消正在等候或生成的修订。修订超时或失败时保留已显示译文。模型驻留和串行调度由 <code>LlamaTranslator</code> 统一负责。</li>
+<li>新转写开始或新短句定稿时取消正在生成的修订。修订超时或失败时保留已显示译文。模型驻留和推理并发由翻译适配器管理。</li>
 <li>字幕窗支持滚动、双语显示和标题栏拖动。位置单独保存，关闭或更换程序后在上次位置恢复。</li>
 </ol></section>
+<section id="speakers"><h2>说话者分段</h2>
+<p><code>ISpeakerDiarizer</code> 从有界队列接收与 ASR 相同的 PCM 帧，按同一音频时钟输出说话者区间。翻译按原队列推进。标签结果到达时，字幕窗按时间交集更新已有行。相邻行属于同一位说话者时仅在第一行显示编号。归属不清楚时标为未确定，检测到同时发言时标为多人重叠。</p>
+<p>Windows 可选使用 NeMo-Speech.cpp 和 Nemotron 3 Diarization CPU 模型。此分支发生错误时，字幕会话继续转写和翻译。<a href="README.Windows.md#区分说话者">安装入口</a></p></section>
 <section id="checks"><h2>验收用例</h2>
-<ul><li>同时播放两个程序，检查只有所选进程树的声音进入字幕。</li><li>在英日片段之间加入静音，检查短句出现和空档段落修订。</li><li>修订期间继续发声，检查新短句优先以及旧 ID 的译文不会写入别处。</li><li>拖动后停止并重开字幕，检查恢复位置和滚动。</li></ul>
+<ul><li>同时播放两个程序，检查只有所选进程树的声音进入字幕。</li><li>在英日片段之间加入静音，检查短句出现和空档段落修订。</li><li>用有临时结果的转写器连续输入两句。确认第一句生成译文时会显示第二句临时原文，且只有定稿会进入正式翻译。</li><li>让第二句在预填过程中定稿，确认预填取消并继续翻译。使用只有定稿的转写器时，确认无需等待预填。</li><li>修订期间继续发声，检查新短句优先以及旧 ID 的译文不会写入别处。</li><li>拖动后停止并重开字幕，检查恢复位置和滚动。</li></ul>
 <p class="refs"><a href="技术方案.html#config">运行配置</a><a href="README.Windows.md">Windows 使用说明</a></p></section></main></body></html>
