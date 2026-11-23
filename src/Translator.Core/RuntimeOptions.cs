@@ -90,7 +90,8 @@ public sealed record RuntimeOptions(
             ocr.DxgiAcquireMs, ocr.DxgiReadbackMs, ocr.DxgiFirstFrameMs, ocr.DxgiRecoveryMs) || ocr.QuietMs > ocr.MaxWaitMs)
             throw new InvalidDataException("ocr 的等待时间不在支持范围内。");
         if (!Within(1, 1000, audio.PendingSegments, audio.HistoryLines, audio.VisibleLines) || audio.ParagraphLines is < 2 or > 100
-            || !Within(1, 600_000, audio.ShortBudgetMs, audio.RefreshMs, audio.ParagraphDelayMs, audio.ParagraphBudgetMs, audio.ParagraphGapMs))
+            || !Within(1, 600_000, audio.ShortBudgetMs, audio.RefreshMs, audio.ParagraphDelayMs, audio.ParagraphBudgetMs, audio.ParagraphGapMs)
+            || !Within(0, 60_000, audio.PrefillBudgetMs))
             throw new InvalidDataException("audio 的队列、时间预算或行数不在支持范围内。");
         if (!Within(1, 60_000, whisper.PreRollMs, whisper.MinSpeechMs, whisper.TrailingSilenceMs, whisper.MaxSegmentMs, whisper.DiscontinuityMs)
             || whisper.MinSpeechMs > whisper.MaxSegmentMs || whisper.VoiceThreshold is < 0 or >= short.MaxValue || whisper.MaxThreads is < 1 or > 256)
@@ -116,7 +117,7 @@ public sealed record OcrTuning(
 
 public sealed record AudioTuning(
     int PendingSegments, int ShortBudgetMs, int RefreshMs, int ParagraphDelayMs, int ParagraphBudgetMs,
-    int ParagraphLines, int ParagraphGapMs, int HistoryLines, int VisibleLines);
+    int ParagraphLines, int ParagraphGapMs, int HistoryLines, int VisibleLines, int PrefillBudgetMs = 500);
 
 public sealed record WhisperTuning(
     int PreRollMs, int MinSpeechMs, int TrailingSilenceMs, int MaxSegmentMs, int DiscontinuityMs,

@@ -47,21 +47,28 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
           <StackPanel Spacing="12">
             <TextBlock Text="翻译偏好" Classes="heading" />
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="12" RowSpacing="9">
               <TextBlock Text="源语言" VerticalAlignment="Center" />
               <ComboBox x:Name="SourceLanguageBox" Grid.Column="1" Width="150"
                         AutomationProperties.Name="源语言" />
               <TextBlock Grid.Row="1" Text="目标语言" VerticalAlignment="Center" />
               <TextBlock Grid.Row="1" Grid.Column="1" Text="简体中文" VerticalAlignment="Center" />
-              <TextBlock Grid.Row="2" Text="字幕字号" VerticalAlignment="Center" />
+              <TextBlock Grid.Row="2" Text="译文字号" VerticalAlignment="Center" />
               <NumericUpDown x:Name="SubtitleFontBox" Grid.Row="2" Grid.Column="1" Width="150"
+                             AutomationProperties.Name="译文字号"
                              Minimum="14" Maximum="44" Increment="1" FormatString="0" />
               <TextBlock Grid.Row="3" Text="字幕底部间距" VerticalAlignment="Center" />
               <NumericUpDown x:Name="SubtitleOffsetBox" Grid.Row="3" Grid.Column="1" Width="150"
                              Minimum="16" Maximum="240" Increment="4" FormatString="0" />
+              <TextBlock Grid.Row="4" Text="音频转写模型" VerticalAlignment="Center" />
+              <ComboBox x:Name="AudioAsrBox" Grid.Row="4" Grid.Column="1" MinWidth="200"
+                        AutomationProperties.Name="音频转写模型" />
             </Grid>
+            <TextBox x:Name="AsrDirectoryBox" PlaceholderText="转写模型目录（可选）"
+                     AutomationProperties.Name="转写模型目录" />
             <CheckBox x:Name="BilingualBox" Content="字幕同时显示原文" />
+            <CheckBox x:Name="SpeakerLabelsBox" Content="音频字幕区分说话者" />
           </StackPanel>
         </Border>
 

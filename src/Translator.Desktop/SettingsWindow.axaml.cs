@@ -16,6 +16,12 @@ public sealed partial class SettingsWindow : Window
         new(SourceLanguage.English, "英语"),
         new(SourceLanguage.Japanese, "日语")
     ];
+    private static readonly Choice<AudioAsrBackend>[] AudioBackends =
+    [
+        new(AudioAsrBackend.Whisper, "Whisper Base"),
+        new(AudioAsrBackend.Nemotron, "Nemotron 3.5 · 流式"),
+        new(AudioAsrBackend.Qwen3Asr, "Qwen3-ASR 0.6B · 本地分块")
+    ];
 
     private readonly SettingsStore store = new();
     private readonly GgufModelCatalog catalog = new();
@@ -29,9 +35,12 @@ public sealed partial class SettingsWindow : Window
         AppSettings settings = result.Settings;
         ModelDirectoryBox.Text = settings.ModelDirectory;
         BindChoices(SourceLanguageBox, Languages, settings.SourceLanguage);
+        BindChoices(AudioAsrBox, AudioBackends, settings.AudioAsrBackend);
+        AsrDirectoryBox.Text = settings.AudioAsrModelDirectory;
         UseGpuBox.IsChecked = settings.UseGpu;
         AllowCpuFallbackBox.IsChecked = settings.AllowCpuFallback;
         BilingualBox.IsChecked = settings.BilingualSubtitles;
+        SpeakerLabelsBox.IsChecked = settings.SpeakerLabels;
         SubtitleFontBox.Value = settings.SubtitleFontSize;
         SubtitleOffsetBox.Value = settings.SubtitleBottomOffset;
         ContinuousOcrKeyBox.Text = settings.Shortcuts.ContinuousOcr;
@@ -99,15 +108,20 @@ public sealed partial class SettingsWindow : Window
             {
                 ModelDirectory = directory,
                 SourceLanguage = ReadChoice<SourceLanguage>(SourceLanguageBox),
+                AudioAsrBackend = ReadChoice<AudioAsrBackend>(AudioAsrBox),
+                AudioAsrModelDirectory = SettingsStore.NormalizeAsrDirectory(AsrDirectoryBox.Text),
                 ModelFileName = model,
                 UseGpu = UseGpuBox.IsChecked == true, AllowCpuFallback = AllowCpuFallbackBox.IsChecked == true,
                 BilingualSubtitles = BilingualBox.IsChecked == true,
-                SubtitleFontSize = (int)(SubtitleFontBox.Value ?? 22), SubtitleBottomOffset = (int)(SubtitleOffsetBox.Value ?? 64),
+                SpeakerLabels = SpeakerLabelsBox.IsChecked == true,
+                SubtitleFontSize = (int)(SubtitleFontBox.Value ?? AppSettings.DefaultSubtitleFontSize),
+                SubtitleBottomOffset = (int)(SubtitleOffsetBox.Value ?? 64),
                 Shortcuts = shortcuts
             };
             store.Save(settings);
             SettingsSaved?.Invoke(settings);
             ModelDirectoryBox.Text = directory;
+            AsrDirectoryBox.Text = settings.AudioAsrModelDirectory;
             Feedback.Text = "设置已保存。";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException

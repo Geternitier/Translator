@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Translator.Core;
+using Translator.Inference;
 
 namespace Translator.Desktop;
 
@@ -8,6 +9,19 @@ internal static class RuntimePaths
     public static string DirectoryPath { get; } = ResolveDirectory();
     public static string OcrDirectory => Path.Combine(DirectoryPath, "ocr");
     public static string WhisperModel => Path.Combine(DirectoryPath, "ggml-base-q5_1.bin");
+    public static string DiarizationModel => Path.Combine(DirectoryPath, "diarization", "Nemotron-3-Diarization.q8_0.gguf");
+    // The native adapter targets the ABI of the runtime version installed by setup-runtime.ps1.
+    public static string DiarizationLibrary => Path.Combine(DirectoryPath, "diarization", "nemo-speech-0.3.0-windows-x86_64-cpu",
+        "bin", "nemo_speech_asr_c.dll");
+    public static string AsrRoot(string configuredDirectory) => configuredDirectory.Length == 0
+        ? Path.Combine(DirectoryPath, "asr") : configuredDirectory;
+
+    public static string? FindAsrModel(AppSettings settings) => settings.AudioAsrBackend switch
+    {
+        AudioAsrBackend.Nemotron => NemotronSpeechTranscriber.FindModelDirectory(AsrRoot(settings.AudioAsrModelDirectory)),
+        AudioAsrBackend.Qwen3Asr => QwenSpeechTranscriber.FindModelDirectory(AsrRoot(settings.AudioAsrModelDirectory)),
+        _ => File.Exists(WhisperModel) ? WhisperModel : null
+    };
     public static (RuntimeOptions Options, string? Error) Configuration { get; } = LoadConfiguration();
 
     private static (RuntimeOptions, string?) LoadConfiguration()

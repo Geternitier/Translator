@@ -11,6 +11,8 @@ internal sealed class WindowsNotificationTray : IDisposable
     private const uint IconId = 1;
     private const uint TrayNotification = 0x8001;
     private const uint AddIcon = 0, ModifyIcon = 1, DeleteIcon = 2, SetIconVersion = 4;
+    private const int ContextMenu = 0x7B, LeftButtonUp = 0x202, RightButtonUp = 0x205;
+    private const int SelectIcon = 0x400, KeySelectIcon = 0x401;
     private readonly Window owner = new() { ShowInTaskbar = false, ShowActivated = false };
     private readonly DispatcherTimer retry = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly NativeMenu menu;
@@ -21,6 +23,7 @@ internal sealed class WindowsNotificationTray : IDisposable
     private readonly uint taskbarCreated;
     private string tooltip = "桌面翻译";
     private bool version4;
+    private bool menuQueued;
     private bool menuOpen;
     private bool disposed;
 
@@ -87,17 +90,28 @@ internal sealed class WindowsNotificationTray : IDisposable
         else if (message == TrayNotification)
         {
             int notification = (int)(lParam.ToInt64() & 0xFFFF);
-            if (notification == 0x7B || (!version4 && notification == 0x205))
+            if ((notification is ContextMenu or LeftButtonUp or SelectIcon)
+                || (!version4 && notification == RightButtonUp))
             {
-                int coordinates = wParam.ToInt32();
-                int x = (short)(coordinates & 0xFFFF), y = (short)(coordinates >> 16);
-                Dispatcher.UIThread.Post(() => ShowMenu(version4, x, y));
+                QueueMenu(version4, unchecked((int)wParam.ToInt64()));
             }
-            else if (notification is 0x202 or 0x400 or 0x401)
+            else if (notification == KeySelectIcon)
                 Dispatcher.UIThread.Post(openSettings);
             handled = true;
         }
         return IntPtr.Zero;
+    }
+
+    private void QueueMenu(bool hasPosition, int coordinates)
+    {
+        if (disposed || menuOpen || menuQueued) return;
+        menuQueued = true;
+        int x = (short)(coordinates & 0xFFFF), y = (short)(coordinates >> 16);
+        Dispatcher.UIThread.Post(() =>
+        {
+            menuQueued = false;
+            ShowMenu(hasPosition, x, y);
+        });
     }
 
     private void ShowMenu(bool hasPosition, int x, int y)

@@ -47,14 +47,14 @@ svg{min-width:0}
 <main>
 <section id="scope"><h2>需求与交互</h2>
 <div class="table"><table><thead><tr><th>入口</th><th>触发和显示</th><th>完成条件</th></tr></thead><tbody>
-<tr><th>托盘 · 选区翻译</th><td>读取稳定选区。Zotero 和 SumatraPDF 在必要时读取可复制选区并恢复剪贴板。译文浮层靠近选区，提供复制和关闭。</td><td>当前浮层可拖动。下一次选区重新定位。</td></tr>
+<tr><th>托盘 · 选区翻译</th><td>读取稳定选区。Zotero 和 SumatraPDF 在必要时读取可复制选区并恢复剪贴板。译文在选区旁逐步显示。</td><td>当前浮层可拖动。下一次选区重新定位。</td></tr>
 <tr><th>Ctrl + Alt + O</th><td>一次框选后持续识别。边缘拖动，角落缩放，悬停显示暂停和关闭图标。译文窗位置可拖动并保存。</td><td>相同文字沿用当前译文。新文字取消过期翻译，确认空白后清除译文。</td></tr>
 <tr><th>托盘选择音频程序或 Ctrl + Alt + S</th><td>采集程序及其子进程的音频。即时译文流式更新，空档用相邻原文修订字幕。标题栏用于拖动，会话重开时恢复位置。</td><td>可回看最近的字幕，支持双语显示。停止、换源和关闭窗口会取消当前会话。</td></tr>
 </tbody></table></div>
-<p>检测为中文的内容跳过翻译。设置中的同一个模型供三个入口使用。开启功能时预加载，切换模型、托盘手动释放、退出或空闲到期时释放模型。</p>
+<p>检测为中文的内容跳过翻译。三个入口共用翻译模型和译文字号。鼠标移入半透明浮层时，右上方显示复制、停止和关闭图标。托盘左击和右击打开同一菜单。开启功能时预加载，切换模型、托盘手动释放、退出或空闲到期时释放模型。</p>
 </section>
 <section id="class"><h2>软件架构与类图</h2>
-<p><code>Translator.Desktop</code> 持有 UI 与会话生命周期。<code>Translator.Core</code> 定义数据、服务契约和 OCR／字幕调度。<code>Translator.Platform.Windows</code> 提供 Windows 采集与设备发现。<code>Translator.Inference</code> 实现 PaddleOCR、Whisper 与 llama.cpp 客户端。</p>
+<p><code>Translator.Desktop</code> 持有 UI 与会话生命周期。<code>Translator.Core</code> 定义数据、服务契约和 OCR／字幕调度。<code>Translator.Platform.Windows</code> 提供 Windows 采集与设备发现。<code>Translator.Inference</code> 实现 PaddleOCR、Whisper、Nemotron、Qwen3-ASR、可选说话者分段和 llama.cpp 客户端。</p>
 <figure><div class="diagram"><svg viewBox="0 0 960 785" role="img" aria-labelledby="types-title" xmlns="http://www.w3.org/2000/svg">
 <title id="types-title">类图 · 桌面控制器编排用例，平台和推理通过 Core 契约接入</title>
 <defs>
@@ -161,7 +161,7 @@ svg{min-width:0}
 </g>
 <g class="node ">
 <rect x="672" y="473" width="270" height="44" rx="9" />
-<text x="807" y="501" class="type" text-anchor="middle">WhisperSpeechTranscriber</text>
+<text x="807" y="501" class="type" text-anchor="middle">Whisper / Nemotron / Qwen3-ASR</text>
 </g>
 <path class="edge " d="M288,495 H342" marker-end="url(#types-arrow)"/>
 <path class="edge realizes" d="M672,495 H618" marker-end="url(#types-arrow)"/>
@@ -171,7 +171,7 @@ svg{min-width:0}
 </g>
 <g class="node port">
 <rect x="345" y="527" width="270" height="44" rx="9" />
-<text x="480" y="555" class="type" text-anchor="middle">IStreamingSubtitleTranslator</text>
+<text x="480" y="555" class="type" text-anchor="middle">IStreamingTranslator</text>
 </g>
 <g class="node ">
 <rect x="672" y="527" width="270" height="44" rx="9" />
@@ -266,9 +266,9 @@ svg{min-width:0}
 <path class="edge " d="M492,232 H686" marker-end="url(#selection-arrow)"/>
 <text x="589.5" y="224" class="message" text-anchor="middle">发送翻译请求</text>
 <path class="edge returns" d="M687,274 H493" marker-end="url(#selection-arrow)"/>
-<text x="589.5" y="266" class="message" text-anchor="middle">返回完整译文</text>
+<text x="589.5" y="266" class="message" text-anchor="middle">流式返回累计译文</text>
 <path class="edge " d="M492,316 H885" marker-end="url(#selection-arrow)"/>
-<text x="689" y="308" class="message" text-anchor="middle">在当前浮层显示译文</text>
+<text x="689" y="308" class="message" text-anchor="middle">在当前浮层逐步显示</text>
 <path class="edge " d="M94,358 H885" marker-end="url(#selection-arrow)"/>
 <text x="490" y="350" class="message" text-anchor="middle">拖动当前译文窗</text>
 <path class="edge " d="M94,400 H288" marker-end="url(#selection-arrow)"/>
@@ -337,7 +337,7 @@ svg{min-width:0}
 <path class="edge " d="M731,400 H885" marker-end="url(#ocr-arrow)"/>
 <text x="808.5" y="392" class="message" text-anchor="middle">提交最新待译文本</text>
 <path class="edge returns" d="M886,442 H732" marker-end="url(#ocr-arrow)"/>
-<text x="808.5" y="434" class="message" text-anchor="middle">返回译文</text>
+<text x="808.5" y="434" class="message" text-anchor="middle">流式返回累计译文</text>
 <path class="edge " d="M729,476 H757 V491 H731" marker-end="url(#ocr-arrow)"/>
 <text x="729" y="471" class="message" text-anchor="middle">仅当前版本上屏</text>
 </svg></div><figcaption>时序 · 持续 OCR 从选框变化到最新译文</figcaption></figure><figure><div class="diagram"><svg viewBox="0 0 980 683" role="img" aria-labelledby="audio-title" xmlns="http://www.w3.org/2000/svg">
@@ -465,19 +465,19 @@ svg{min-width:0}
 <path class="edge " d="M359,442 H885" marker-end="url(#runtime-arrow)"/>
 <text x="622.5" y="434" class="message" text-anchor="middle">结束进程并回收驻留状态</text>
 </svg></div><figcaption>时序 · 启用前预加载，所有入口共用一个模型实例</figcaption></figure>
-<p>DXGI 先用脏矩形和移动矩形过滤选框外更新，再只读回选框。旋转屏幕和 DXGI 不可用的会话回退到 GDI。划词、OCR 与段落修订读取完整响应，即时字幕通过 SSE 出字。</p>
+<p>DXGI 先用脏矩形和移动矩形过滤选框外更新，再只读回选框。旋转屏幕和 DXGI 不可用的会话回退到 GDI。选区、OCR 与即时字幕共用流式翻译接口，llama.cpp 适配器通过 SSE 输出累计译文。段落修订读取结构化的完整响应。</p>
 <p>llama.cpp 按 token 前缀复用单槽中的可用状态。前缀变化的部分重新计算。GPU 默认先选 CUDA，之后可尝试已安装的 Vulkan，CPU 回退由设置控制。子进程仅监听本机环回地址并使用每次启动生成的密钥。</p>
 <p class="refs"><a href="https://learn.microsoft.com/windows/win32/direct3ddxgi/desktop-dup-api">DXGI Desktop Duplication</a><a href="https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/">WASAPI 程序回环</a><a href="https://github.com/ggml-org/llama.cpp/blob/b12631/tools/server/README.md">llama.cpp 服务接口</a></p>
 </section>
 <section id="config"><h2>配置与模型</h2>
 <div class="table"><table><thead><tr><th>文件</th><th>内容</th></tr></thead><tbody>
 <tr><th><code>translator.runtime.json</code></th><td>应用内置推理预算、显存和进程时限、OCR 和 DXGI 等待时间、字幕队列、Whisper 分段和设备参数，可通过本机高级配置覆盖。</td></tr>
-<tr><th><code>scripts/setup-runtime.ps1</code></th><td>固定版本的 CUDA／Vulkan 运行包、PaddleOCR 和 Whisper 资产，以及 SHA-256 校验值。由安装脚本下载和校验。</td></tr>
-<tr><th><code>translater.local.json</code> 或用户设置</th><td>模型目录、所选文件、语种、GPU 与 CPU 回退、快捷键和字幕偏好。设置页继续读取已有配置。</td></tr>
+<tr><th><code>scripts/setup-runtime.ps1</code></th><td>下载和校验固定版本的 CUDA／Vulkan、PaddleOCR、Whisper，以及选装的 ONNX 转写模型和说话者分段组件。</td></tr>
+<tr><th><code>translater.local.json</code> 或用户设置</th><td>翻译模型目录、所选文件、转写后端及模型目录、说话者标注、语种、GPU 与 CPU 回退、快捷键和译文字号。设置和模型路径保存在本机。</td></tr>
 <tr><th><code>overlay-positions.json</code></th><td>OCR 与音频窗的独立位置。恢复时按当前屏幕工作区约束窗口位置。</td></tr>
 </tbody></table></div>
 <p>首次运行时在设置页选择模型目录和 GGUF 文件，选择结果保存在本机。高级调优可在本机数据目录放置完整的 <code>translator.runtime.json</code>，或通过 <code>TRANSLATOR_CONFIG_PATH</code> 指定文件。配置无效时显示原因并使用内置默认值。</p>
-<p>质量模型的默认文件是 Qwen3.5-9B Q4_K_M，轻量文件是 Qwen3.5-4B Q4_K_M。模型目录应包含可读取的 GGUF 文件。显存由所选权重、上下文缓存和计算缓冲共同决定。</p></section>
+<p>推荐 Qwen3.5-9B Q4_K_M，显存较小时可选 Qwen3.5-4B Q4_K_M。翻译模型目录应包含可读取的 GGUF 文件。显存由所选权重、上下文缓存和计算缓冲共同决定。</p></section>
 <section id="ports"><h2>移植边界与验证</h2>
 <p>Windows 首版使用 UI Automation、DXGI/GDI、WASAPI Process Loopback 和 Windows 托盘。macOS 与 Linux 可以在相同契约下提供选区、选框采集、程序音频及推理运行时适配器。平台 UI 和权限交互也在各自的宿主层实现。</p>
 <ul><li>运行 <code>dotnet build -c Release</code> 并检查 <code>--check-models</code> 的模型和设备候选。</li>

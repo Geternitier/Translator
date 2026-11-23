@@ -5,6 +5,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Translator.Core;
 using Translator.Inference;
 using Translator.Platform.Windows;
 
@@ -35,8 +36,7 @@ public sealed partial class App : Application
                 }
                 controller = new WindowsDesktopController(text => windowsTray?.SetTooltip(text), menu,
                     () => windowsTray?.OpenMenuAtCursor(), new WindowsAudioSourceCatalog(), new ProcessLoopbackCapture(),
-                    new WhisperSpeechTranscriber(RuntimePaths.WhisperModel, RuntimePaths.Configuration.Options.Whisper),
-                    new WindowsLlamaRuntimeProvider(RuntimePaths.DirectoryPath, RuntimePaths.Configuration.Options.Windows));
+                    CreateSpeechTranscriber, CreateSpeakerDiarizer, new PaddleScreenOcr(RuntimePaths.OcrDirectory), CreateTranslationService);
             }
 
             TrayMenu.Add(menu, "设置", () => OpenSettings(desktop));
@@ -68,6 +68,33 @@ public sealed partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static ISpeechTranscriber CreateSpeechTranscriber(AppSettings settings)
+    {
+        string? model = RuntimePaths.FindAsrModel(settings);
+        string root = RuntimePaths.AsrRoot(settings.AudioAsrModelDirectory);
+        return settings.AudioAsrBackend switch
+        {
+            AudioAsrBackend.Nemotron => new NemotronSpeechTranscriber(model ?? root),
+            AudioAsrBackend.Qwen3Asr => new QwenSpeechTranscriber(model ?? root),
+            _ => new WhisperSpeechTranscriber(RuntimePaths.WhisperModel, RuntimePaths.Configuration.Options.Whisper)
+        };
+    }
+
+    private static ISpeakerDiarizer? CreateSpeakerDiarizer(AppSettings settings) => settings.SpeakerLabels
+        ? new NemoSpeakerDiarizer(RuntimePaths.DiarizationLibrary, RuntimePaths.DiarizationModel) : null;
+
+    private static ITranslationService CreateTranslationService(Func<AppSettings> readSettings, Func<bool> keepWarm)
+    {
+        RuntimeOptions tuning = RuntimePaths.Configuration.Options;
+        var runtimeProvider = new WindowsLlamaRuntimeProvider(RuntimePaths.DirectoryPath, tuning.Windows);
+        return new LlamaTranslator(() =>
+        {
+            AppSettings settings = readSettings();
+            return new LlamaOptions(settings.ModelDirectory, settings.ModelFileName, settings.LlamaExecutable,
+                settings.UseGpu, settings.AllowCpuFallback);
+        }, runtimeProvider, tuning.Llama, keepWarm);
     }
 
     private bool TrayUnavailable => OperatingSystem.IsWindows() && windowsTray?.IsRegistered != true;

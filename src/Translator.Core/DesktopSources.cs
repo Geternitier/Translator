@@ -47,8 +47,15 @@ public interface IApplicationAudioCapture
 
 public sealed record SpeechSegment(TimeSpan Start, TimeSpan End, string Text, string? DetectedLanguage = null);
 
+/// <summary>A snapshot of the current utterance, with timestamps relative to the PCM stream.</summary>
+/// <param name="StablePrefixLength">Length in UTF-16 code units of the prefix shared by subsequent
+/// snapshots of this utterance. Use zero when the recognizer cannot guarantee a stable prefix.</param>
+public sealed record SpeechRecognitionUpdate(SpeechSegment Speech, bool IsFinal, int StablePrefixLength = 0);
+
 public interface ISpeechTranscriber
 {
-    IAsyncEnumerable<SpeechSegment> TranscribeAsync(
+    /// <summary>Reports utterances in order. A final update closes the current utterance.
+    /// Recognizers that only produce final results can omit intermediate updates.</summary>
+    IAsyncEnumerable<SpeechRecognitionUpdate> TranscribeAsync(
         IAsyncEnumerable<AudioFrame> audio, SourceLanguage language, CancellationToken cancellationToken);
 }

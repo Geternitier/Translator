@@ -2,6 +2,9 @@ param(
     [string]$RuntimeDirectory = $env:TRANSLATER_RUNTIME_DIR,
     [ValidateSet('Cuda', 'Vulkan')]
     [string]$GgufBackend = 'Cuda',
+    [ValidateSet('Nemotron', 'Qwen3Asr')]
+    [string[]]$AsrModels = @(),
+    [switch]$SpeakerDiarization,
     [ValidateRange(1, 3600)]
     [int]$DownloadTimeoutSeconds = 180
 )
@@ -78,6 +81,20 @@ $engines = @{
 }
 $engine = $engines[$GgufBackend]
 
+$asrPackages = @{
+    Nemotron = @{
+        name = 'sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-160ms-int8-2026-06-11'
+        sha256 = 'a81909a1780d84cff16d73c15e13e67d9d81d8839faf14870d507d8499f7a61a'
+        requiredFiles = @('encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt')
+    }
+    Qwen3Asr = @{
+        name = 'sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25'
+        sha256 = '393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96'
+        requiredFiles = @('conv_frontend.onnx', 'encoder.int8.onnx', 'decoder.int8.onnx', 'tokenizer/merges.txt',
+            'tokenizer/vocab.json', 'tokenizer/tokenizer_config.json')
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($RuntimeDirectory)) { $RuntimeDirectory = Join-Path $PSScriptRoot '..\runtime' }
 $runtimePath = [IO.Path]::GetFullPath($RuntimeDirectory)
 $runtimePrefix = $runtimePath.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -114,6 +131,44 @@ function Receive-Asset($Asset) {
     }
 }
 
+function Install-AsrModel($Package) {
+    $name = $Package.name
+    $modelRoot = Runtime-Child 'asr'
+    $modelTarget = Runtime-Child "asr/$name"
+    $missing = @($Package.requiredFiles | Where-Object { !(Test-Path -LiteralPath (Join-Path $modelTarget $_) -PathType Leaf) })
+    if ($missing.Count -eq 0) { return }
+
+    $archive = Receive-Asset @{
+        path = "asr/$name.tar.bz2"
+        url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$name.tar.bz2"
+        sha256 = $Package.sha256
+    }
+    $stage = Runtime-Child "asr/.model-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    try {
+        & tar.exe -xf $archive -C $stage
+        if ($LASTEXITCODE -ne 0) { throw "Failed to extract $archive." }
+        $extracted = Join-Path $stage $name
+        foreach ($file in $Package.requiredFiles) {
+            if (!(Test-Path -LiteralPath (Join-Path $extracted $file) -PathType Leaf)) { throw "Missing ASR file $file." }
+        }
+        if (!(Test-Path -LiteralPath $modelTarget)) { [IO.Directory]::Move($extracted, $modelTarget) }
+        else {
+            foreach ($file in $missing) {
+                $destination = Join-Path $modelTarget $file
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Copy-Item -LiteralPath (Join-Path $extracted $file) -Destination $destination
+            }
+        }
+    }
+    finally {
+        $resolvedStage = (Resolve-Path -LiteralPath $stage).Path
+        if ([IO.Path]::GetDirectoryName($resolvedStage) -eq $modelRoot -and $resolvedStage -eq $stage) {
+            Remove-Item -LiteralPath $resolvedStage -Recurse -Force
+        }
+    }
+}
+
 foreach ($asset in $assets) { Receive-Asset $asset | Out-Null }
 
 $target = Runtime-Child $engine.directory
@@ -139,5 +194,27 @@ if ($missing.Count -ne 0) {
     finally {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     }
+}
+foreach ($model in $AsrModels) { Install-AsrModel $asrPackages[$model] }
+if ($SpeakerDiarization) {
+    $diarizationPackage = 'nemo-speech-0.3.0-windows-x86_64-cpu'
+    $diarizationTarget = Runtime-Child "diarization/$diarizationPackage"
+    $diarizationFiles = @('nemo_speech_asr_c.dll', 'nemo_speech_asr.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll')
+    $diarizationMissing = @($diarizationFiles | Where-Object {
+        !(Test-Path -LiteralPath (Join-Path $diarizationTarget "bin/$_") -PathType Leaf)
+    })
+    if ($diarizationMissing.Count -gt 0) {
+        $archive = Receive-Asset @{
+            path = "diarization/$diarizationPackage.zip"
+            url = "https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v0.3.0/$diarizationPackage.zip"
+            sha256 = '4ed9740e361e4653f56c3dce7d1e81883a1c8b831c1bd7d01567fff1130b5b05'
+        }
+        Expand-Archive -LiteralPath $archive -DestinationPath (Runtime-Child 'diarization') -Force
+    }
+    Receive-Asset @{
+        path = 'diarization/Nemotron-3-Diarization.q8_0.gguf'
+        url = 'https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/6a002fd9cad5e8dfa624d97a7ee0388a7153243d/Nemotron-3-Diarization.q8_0.gguf'
+        sha256 = '08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1'
+    } | Out-Null
 }
 Write-Host "Runtime ready at $runtimePath"

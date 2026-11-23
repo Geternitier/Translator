@@ -6,17 +6,24 @@ using Translator.Platform.Windows;
 
 namespace Translator.Desktop;
 
+internal enum AudioAsrBackend { Whisper, Nemotron, Qwen3Asr }
+
 internal sealed record AppSettings
 {
+    public const int DefaultSubtitleFontSize = 22;
+
     public string ModelDirectory { get; init; } = Path.Combine(SettingsStore.UserDirectory, "Models");
     public SourceLanguage SourceLanguage { get; init; } = SourceLanguage.Automatic;
+    public AudioAsrBackend AudioAsrBackend { get; init; } = AudioAsrBackend.Whisper;
+    public string AudioAsrModelDirectory { get; init; } = "";
     public string ModelFileName { get; init; } = "";
     public string LlamaExecutable { get; init; } = "";
     public bool UseGpu { get; init; } = true;
     public bool AllowCpuFallback { get; init; } = true;
     public bool AutoSelection { get; init; } = true;
     public bool BilingualSubtitles { get; init; }
-    public int SubtitleFontSize { get; init; } = 22;
+    public bool SpeakerLabels { get; init; }
+    public int SubtitleFontSize { get; init; } = DefaultSubtitleFontSize;
     public int SubtitleBottomOffset { get; init; } = 64;
     public ShortcutSettings Shortcuts { get; init; } = new();
 }
@@ -84,6 +91,7 @@ internal sealed class SettingsStore
             return new SettingsLoadResult(settings with
             {
                 ModelDirectory = directory,
+                AudioAsrModelDirectory = NormalizeAsrDirectory(settings.AudioAsrModelDirectory),
                 ModelFileName = model,
                 LlamaExecutable = settings.LlamaExecutable?.Trim() ?? "",
                 Shortcuts = shortcuts,
@@ -126,6 +134,9 @@ internal sealed class SettingsStore
 
         return Path.GetFullPath(directory.Trim());
     }
+
+    public static string NormalizeAsrDirectory(string? directory) =>
+        string.IsNullOrWhiteSpace(directory) ? "" : NormalizeDirectory(directory);
 
     public OverlayPositions LoadOverlayPositions()
     {
