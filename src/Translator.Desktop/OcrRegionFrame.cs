@@ -1,9 +1,8 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using Avalonia;
-using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Translator.Core;
@@ -13,34 +12,26 @@ namespace Translator.Desktop;
 
 internal sealed class OcrRegionFrame : IDisposable
 {
-    private static readonly IBrush FrameBrush = new SolidColorBrush(Color.Parse("#7BCBAE"));
-    private static readonly IBrush PausedBrush = new SolidColorBrush(Color.Parse("#D6A653"));
-    private static readonly IBrush PanelBrush = new SolidColorBrush(Color.Parse("#172A29"));
-    private static readonly IBrush GripBrush = new SolidColorBrush(Color.Parse("#35514E"));
-    private static readonly Geometry PauseGlyph = Geometry.Parse("M 3,2 L 6,2 6,12 3,12 Z M 8,2 L 11,2 11,12 8,12 Z");
-    private static readonly Geometry ResumeGlyph = Geometry.Parse("M 4,2 L 12,7 4,12 Z");
-    private static readonly Geometry CloseGlyph = Geometry.Parse("M 3,2 L 7,6 11,2 12,3 8,7 12,11 11,12 7,8 3,12 2,11 6,7 2,3 Z");
     private static readonly Cursor MoveCursor = new(StandardCursorType.SizeAll);
     private static readonly Cursor DownDiagonal = new(StandardCursorType.BottomRightCorner);
     private static readonly Cursor UpDiagonal = new(StandardCursorType.BottomLeftCorner);
 
     private readonly FloatingOverlay outline = new(clickThrough: false);
     private readonly FloatingOverlay toolbar = new(clickThrough: false);
-    private readonly Border edge = new() { IsHitTestVisible = false };
-    private readonly Border hitSurface = new() { Background = new SolidColorBrush(Color.FromArgb(12, 32, 95, 76)) };
+    private readonly Border edge = new() { IsHitTestVisible = false, CornerRadius = new CornerRadius(4) };
+    private readonly Border hitSurface = new() { Background = Brush.Parse("#25D6589E") };
     private readonly Border toolbarPanel;
-    private readonly Button pause = MakeButton(PauseGlyph, "暂停");
-    private readonly DispatcherTimer hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
+    private readonly Button pause = SakuraVisuals.Tool(SakuraGlyph.Pause, "暂停识别");
+    private readonly TextBlock state = new() { Foreground = SakuraVisuals.CaptionSecondary, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+    private readonly DispatcherTimer dragTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
     private readonly Action beginAdjustment;
     private readonly Action<ScreenRegion> commitAdjustment;
     private ScreenRegion region;
     private DesktopDisplay? display;
-    private PixelRect toolbarBounds;
     private HitRing shape;
     private HitRing? installedShape;
     private int cornerReach;
     private DragSession? drag;
-    private long lastHoverTime;
     private bool visible;
     private bool adjusting;
 
@@ -53,17 +44,24 @@ internal sealed class OcrRegionFrame : IDisposable
         outline.Opened += (_, _) => InstallHitRing(force: true);
 
         AttachFrameEvents();
-        Button closeButton = MakeButton(CloseGlyph, "关闭");
+        Button closeButton = SakuraVisuals.Tool(SakuraGlyph.Close, "结束 OCR");
+        Button keyboard = SakuraVisuals.Tool(SakuraGlyph.Keyboard, "启用方向键移动，Shift 加方向键缩放");
         pause.Click += (_, _) => togglePause();
         closeButton.Click += (_, _) => close();
+        keyboard.Click += (_, _) => toolbar.FocusTools(keyboard);
+        toolbar.KeyDown += AdjustWithKeyboard;
 
-        var actions = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4 };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        actions.Children.Add(SakuraVisuals.Icon(SakuraGlyph.Scan, SakuraVisuals.CaptionSecondary, 14));
+        actions.Children.Add(state);
+        actions.Children.Add(keyboard);
         actions.Children.Add(pause);
         actions.Children.Add(closeButton);
-        toolbarPanel = new Border { Background = PanelBrush, CornerRadius = new CornerRadius(7), Padding = new Thickness(4), Child = actions };
+        toolbarPanel = SakuraVisuals.CaptionSurface(actions);
+        toolbarPanel.Padding = new Thickness(6, 4);
         toolbar.Content = toolbarPanel;
 
-        hoverTimer.Tick += (_, _) => RefreshHover();
+        dragTimer.Tick += (_, _) => { if (drag is not null && TryGetCursor(out PixelPoint cursor)) MoveDrag(cursor); };
     }
 
     public void Show(ScreenRegion updated, bool paused)
@@ -71,31 +69,24 @@ internal sealed class OcrRegionFrame : IDisposable
         if (drag is not null) return;
         display = WindowsScreenCapture.GetDisplay(updated.DisplayId);
         region = updated;
-        SetPaused(paused);
+        ApplyPauseState(paused);
         visible = true;
         Arrange();
         if (!outline.IsVisible) outline.Show();
-        if (!hoverTimer.IsEnabled) hoverTimer.Start();
-        RefreshHover();
+        SetToolsVisible(true);
     }
 
     public void SetPaused(bool paused)
     {
-        ((PathIcon)pause.Content!).Data = paused ? ResumeGlyph : PauseGlyph;
-        string label = paused ? "继续" : "暂停";
-        AutomationProperties.SetName(pause, label);
-        ToolTip.SetTip(pause, label);
-        edge.BorderBrush = paused ? PausedBrush : FrameBrush;
+        ApplyPauseState(paused);
+        if (visible) ArrangeToolbar();
     }
 
-    public void Hide()
+    private void ApplyPauseState(bool paused)
     {
-        visible = false;
-        hoverTimer.Stop();
-        lastHoverTime = 0;
-        if (drag is not null) FinishDrag();
-        outline.Hide();
-        SetToolsVisible(false);
+        SakuraVisuals.SetTool(pause, paused ? SakuraGlyph.Play : SakuraGlyph.Pause, paused ? "继续识别" : "暂停识别");
+        state.Text = paused ? "已暂停" : "监测区域";
+        edge.BorderBrush = paused ? SakuraVisuals.Paused : SakuraVisuals.Frame;
     }
 
     private void AttachFrameEvents()
@@ -109,6 +100,7 @@ internal sealed class OcrRegionFrame : IDisposable
             ResizeCorner corner = CornerAt(region, point.X - monitor.X, point.Y - monitor.Y, cornerReach);
             drag = new DragSession(region, point, args.Pointer, corner);
             args.Pointer.Capture(hitSurface);
+            dragTimer.Start();
             args.Handled = true;
         };
         hitSurface.PointerMoved += (_, args) =>
@@ -196,6 +188,7 @@ internal sealed class OcrRegionFrame : IDisposable
     {
         DragSession? previous = drag;
         drag = null;
+        dragTimer.Stop();
         if (previous is null) return;
         previous.Pointer.Capture(null);
         if (!adjusting) return;
@@ -203,20 +196,23 @@ internal sealed class OcrRegionFrame : IDisposable
         commitAdjustment(region);
     }
 
-    private void RefreshHover()
+    private void AdjustWithKeyboard(object? sender, KeyEventArgs args)
     {
-        if (!visible || !TryGetCursor(out PixelPoint cursor)) return;
-        if (drag is not null)
+        if (!visible || drag is not null || display is not { } monitor) return;
+        int step = (int)Math.Ceiling(8 * OverlayGeometry.ScaleAt(outline, monitor));
+        (int dx, int dy) = args.Key switch
         {
-            MoveDrag(cursor);
-            return;
-        }
-
-        var bounds = new PixelRect(outline.Position, new PixelSize(shape.Width, shape.Height));
-        if (bounds.Contains(cursor) || (toolbar.IsVisible && toolbarBounds.Contains(cursor)))
-            lastHoverTime = Stopwatch.GetTimestamp();
-
-        SetToolsVisible(lastHoverTime != 0 && Stopwatch.GetElapsedTime(lastHoverTime) < TimeSpan.FromMilliseconds(250));
+            Key.Left => (-step, 0), Key.Right => (step, 0), Key.Up => (0, -step), Key.Down => (0, step), _ => (0, 0)
+        };
+        if (dx == 0 && dy == 0) return;
+        args.Handled = true;
+        ScreenRegion updated = AdjustRegion(region, monitor.Width, monitor.Height, dx, dy,
+            args.KeyModifiers.HasFlag(KeyModifiers.Shift) ? ResizeCorner.BottomRight : ResizeCorner.None);
+        if (updated == region) return;
+        beginAdjustment();
+        region = updated;
+        Arrange();
+        commitAdjustment(region);
     }
 
     private void Arrange()
@@ -234,7 +230,15 @@ internal sealed class OcrRegionFrame : IDisposable
         edge.Margin = new Thickness((padding - 1) / scale);
         edge.BorderThickness = new Thickness(2 / scale);
         InstallHitRing();
+        ArrangeToolbar();
+    }
 
+    private void ArrangeToolbar()
+    {
+        if (display is not { } monitor) return;
+        double scale = OverlayGeometry.ScaleAt(outline, monitor);
+        int x = monitor.X + region.X, y = monitor.Y + region.Y;
+        int padding = (int)Math.Ceiling(5 * scale);
         toolbarPanel.Measure(Size.Infinity);
         int toolbarWidth = (int)Math.Ceiling(toolbarPanel.DesiredSize.Width * scale);
         int toolbarHeight = (int)Math.Ceiling(toolbarPanel.DesiredSize.Height * scale);
@@ -244,7 +248,6 @@ internal sealed class OcrRegionFrame : IDisposable
         toolbar.Position = new PixelPoint(toolbarX, toolbarY);
         toolbar.Width = toolbarWidth / scale;
         toolbar.Height = toolbarHeight / scale;
-        toolbarBounds = new PixelRect(toolbarX, toolbarY, toolbarWidth, toolbarHeight);
     }
 
     private void InstallHitRing(bool force = false)
@@ -274,23 +277,10 @@ internal sealed class OcrRegionFrame : IDisposable
         catch (Win32Exception) { cursor = default; return false; }
     }
 
-    private static Button MakeButton(Geometry glyph, string label)
-    {
-        var button = new Button
-        {
-            Content = new PathIcon { Data = glyph, Width = 13, Height = 13, Foreground = Brushes.White },
-            Background = GripBrush, Focusable = false, Width = 30, Height = 27, Padding = new Thickness(4),
-            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-            VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center
-        };
-        AutomationProperties.SetName(button, label);
-        ToolTip.SetTip(button, label);
-        return button;
-    }
-
     public void Dispose()
     {
-        Hide();
+        visible = false;
+        FinishDrag();
         toolbar.Close();
         outline.Close();
     }

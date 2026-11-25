@@ -11,6 +11,10 @@ internal enum AudioAsrBackend { Whisper, Nemotron, Qwen3Asr }
 internal sealed record AppSettings
 {
     public const int DefaultSubtitleFontSize = 22;
+    public const int MinimumSubtitleFontSize = 14;
+    public const int MaximumSubtitleFontSize = 44;
+    public const int MinimumSubtitleBottomOffset = 16;
+    public const int MaximumSubtitleBottomOffset = 240;
 
     public string ModelDirectory { get; init; } = Path.Combine(SettingsStore.UserDirectory, "Models");
     public SourceLanguage SourceLanguage { get; init; } = SourceLanguage.Automatic;
@@ -33,8 +37,6 @@ internal sealed record ShortcutSettings
     public const string DefaultContinuousOcr = "Ctrl + Alt + O";
     public string ContinuousOcr { get; init; } = DefaultContinuousOcr;
     public string Audio { get; init; } = "Ctrl + Alt + S";
-
-    public string[] Values() => [ContinuousOcr, Audio];
 }
 
 internal sealed record SettingsLoadResult(AppSettings Settings, string? Error = null);
@@ -96,8 +98,8 @@ internal sealed class SettingsStore
                 LlamaExecutable = settings.LlamaExecutable?.Trim() ?? "",
                 Shortcuts = shortcuts,
                 AllowCpuFallback = allowCpuFallback,
-                SubtitleFontSize = Math.Clamp(settings.SubtitleFontSize, 14, 44),
-                SubtitleBottomOffset = Math.Clamp(settings.SubtitleBottomOffset, 16, 240)
+                SubtitleFontSize = Math.Clamp(settings.SubtitleFontSize, AppSettings.MinimumSubtitleFontSize, AppSettings.MaximumSubtitleFontSize),
+                SubtitleBottomOffset = Math.Clamp(settings.SubtitleBottomOffset, AppSettings.MinimumSubtitleBottomOffset, AppSettings.MaximumSubtitleBottomOffset)
             });
         }
         catch (IOException exception) when (exception is FileNotFoundException or DirectoryNotFoundException)

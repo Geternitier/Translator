@@ -1,0 +1,1518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>樱语翻译 · 交互原型</title>
+  <link rel="icon" type="image/png" href="../src/Translator.Desktop/Assets/sakura-avatar.png">
+  <style>
+    :root {
+      --bg: #fff8fb; --paper: #fff; --ink: #392539; --muted: #725e72;
+      --line: #efdfeb; --pink: #ab316b; --pink-strong: #942557; --pink-soft: #fce5ef;
+      --lavender: #f0e8fa; --purple: #674591; --peach: #ffede5; --coral: #a84737;
+      --green: #22684c; --green-soft: #eaf7ee; --amber: #8a5317; --amber-soft: #fff0d9;
+      --shadow: 0 5px 16px #5f214907; --overlay: #33243e; --overlay-muted: #ebcce5;
+      font: 14px/1.6 "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      color: var(--ink); background: var(--bg);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-width: 320px; }
+    button, input, select { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    button:disabled { cursor: default; opacity: .55; }
+    button, input, select, a { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 2px solid #77245b; outline-offset: 3px; }
+    .caption :focus-visible, .region-tools :focus-visible { outline-color: #ffd1e8; }
+    a { color: var(--pink-strong); text-underline-offset: 3px; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1, h2, h3 { line-height: 1.32; }
+    svg { display: block; width: 20px; height: 20px; }
+    [data-icon] { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+    .icon { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .topbar { position: sticky; top: 0; z-index: 5; background: #fffcfef5; border-bottom: 1px solid var(--line); }
+    .top-inner { height: 72px; max-width: 1512px; margin: auto; padding: 0 38px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; gap: 12px; align-items: center; border: 0; background: none; padding: 0; text-align: left; }
+    .brand-icon { display: block; width: 42px; height: 42px; flex: none; }
+    .brand strong { display: block; font-size: 17px; letter-spacing: .04em; line-height: 1.2; }
+    .brand small { display: block; color: var(--muted); font: 700 10px/1.8 "Segoe UI", sans-serif; letter-spacing: .17em; text-transform: uppercase; }
+    .top-actions, .button-row, .toolbar-items, .preview-tabs, .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .status { display: inline-flex; align-items: center; width: fit-content; gap: 7px; border-radius: 999px; padding: 4px 10px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .status::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: currentColor; }
+    .status[data-tone="idle"] { background: #f4edf4; color: var(--muted); }
+    .status[data-tone="pause"] { background: var(--amber-soft); color: var(--amber); }
+    .status[data-tone="active"] { background: var(--pink-soft); color: var(--pink-strong); }
+    .tray-wrap { position: relative; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); font-weight: 700; text-decoration: none; }
+    .btn:hover:not(:disabled) { background: #fff1f7; border-color: #efbed5; }
+    .btn svg { width: 17px; height: 17px; }
+    .btn.primary { color: #fff; background: var(--pink); border-color: var(--pink); box-shadow: 0 4px 10px #86215225; }
+    .btn.primary:hover:not(:disabled) { background: var(--pink-strong); border-color: var(--pink-strong); }
+    .btn.quiet { border-color: transparent; background: transparent; }
+    .btn.danger { color: #9b2849; }
+    .btn.icon-button { width: 38px; height: 38px; min-height: 38px; padding: 0; }
+    .tray-popover { position: absolute; top: calc(100% + 12px); right: 0; width: min(280px, calc(100vw - 28px)); padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 14px 45px #4c244626; }
+    .tray-popover h2 { font-size: 14px; padding: 3px 8px 8px; }
+    .tray-popover hr { border: 0; border-top: 1px solid var(--line); margin: 5px 1px; }
+    .tray-popover button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; border: 0; background: none; border-radius: 8px; text-align: left; }
+    .tray-popover button:hover { background: var(--pink-soft); }
+    .tray-popover svg { width: 16px; height: 16px; color: var(--pink-strong); }
+    .tray-popover button small { margin-left: auto; color: var(--muted); }
+    .shell { max-width: 1512px; margin: 0 auto; display: grid; grid-template-columns: 222px minmax(0, 1fr); min-height: calc(100vh - 72px); }
+    .sidebar { display: flex; flex-direction: column; gap: 22px; border-right: 1px solid var(--line); padding: 30px 20px 24px 25px; background: #fffbfe; position: sticky; top: 72px; height: calc(100dvh - 72px); overflow: auto; }
+    .nav-group { display: grid; gap: 4px; }
+    .nav-label { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; padding: 0 10px 5px; }
+    .nav-link { display: flex; align-items: center; gap: 11px; min-height: 44px; border: 1px solid transparent; background: none; padding: 8px 10px; border-radius: 10px; text-align: left; white-space: nowrap; color: var(--muted); }
+    .nav-link svg { width: 18px; height: 18px; }
+    .nav-link:hover { background: #fff1f7; color: var(--ink); }
+    .nav-link[aria-current="page"] { background: #fbe4ef; border-color: #f4d1e4; color: var(--pink-strong); font-weight: 800; }
+    .nav-link[aria-current="page"]::after { content: ""; margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--pink); }
+    .model-note { margin-top: auto; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+    .model-note .note-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 12px; }
+    .model-note .note-head svg { width: 16px; height: 16px; color: var(--pink); }
+    .model-note p { margin-top: 4px; color: var(--muted); overflow-wrap: anywhere; font-size: 11px; }
+    .model-note button { border: 0; background: none; color: var(--pink-strong); padding: 5px 0 0; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 3px; }
+    .model-note button svg { width: 12px; height: 12px; }
+    main { min-width: 0; padding: 28px 38px 45px; }
+    .page-head { margin-bottom: 20px; }
+    .page-head h1 { font-size: 30px; letter-spacing: -.03em; font-weight: 800; }
+    .page-head p { color: var(--muted); margin-top: 5px; }
+    .hero { position: relative; isolation: isolate; display: flex; align-items: center; min-height: 306px; border: 1px solid #f5cbe0; border-radius: 23px; overflow: hidden; background: radial-gradient(ellipse at 80% 78%,#e9d6fb 0,transparent 48%), linear-gradient(108deg, #fff0f6 2%, #fce1ed 60%, #f6e2fb 100%); }
+    .hero::before { content: ""; position: absolute; z-index: -1; inset: 0 0 0 54%; background-image: radial-gradient(#c887b553 1.1px,transparent 1.1px); background-size: 13px 13px; mask-image: linear-gradient(90deg,transparent,#000 67%,#000); opacity: .5; }
+    .hero-copy { z-index: 1; padding: 32px 0 32px 35px; max-width: 64%; }
+    .hero-kicker { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 12px; color: var(--pink-strong); padding: 4px 9px; border-radius: 999px; border: 1px solid #efc5dc; background: #fff8fc; margin-bottom: 11px; }
+    .hero-kicker svg { width: 15px; height: 15px; }
+    .hero h2 { font-size: clamp(28px, 4vw, 52px); font-weight: 900; letter-spacing: -.065em; }
+    .hero h2 span { color: var(--pink-strong); }
+    .hero p { color: #654a64; margin: 11px 0 21px; max-width: 405px; }
+    .hero-art { position: absolute; inset: 0 1.5% 0 auto; width: 40%; pointer-events: none; display: grid; place-items: center; }
+    .hero-ring { position: absolute; width: min(90%, 314px); aspect-ratio: 1; border: 1px solid #e9a9cd; border-radius: 50%; background: #fff9fc45; }
+    .hero-ring::after { content: ""; position: absolute; inset: 17px; border: 1px dashed #d992b9; border-radius: inherit; opacity: .68; }
+    .hero-art img { position: relative; width: min(100%, 330px); height: 294px; object-fit: contain; filter: drop-shadow(0 10px 16px #62345c26); }
+    .hero-art .spark { position: absolute; color: #a9508a; }
+    .hero-art .spark svg { width: 25px; height: 25px; }
+    .hero-art .spark.first { left: 4%; top: 20%; }
+    .hero-art .spark.second { right: 5%; bottom: 15%; color: #865da7; }
+    .section { margin-top: 24px; }
+    #preview-title { scroll-margin-top: 85px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
+    .section-head h2 { font-size: 19px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+    .section-head h2 svg { color: var(--pink); width: 19px; height: 19px; }
+    .section-head p, .muted { color: var(--muted); }
+    .section-head p { font-size: 12px; }
+    .tools-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .tool-card { min-width: 0; min-height: 142px; display: flex; flex-direction: column; gap: 5px; align-items: stretch; text-align: left; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); border-radius: 15px; padding: 14px 15px 13px; }
+    .tool-card:hover { border-color: #e3a8c9; box-shadow: 0 6px 17px #9d376517; }
+    .tool-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .tile-icon { width: 38px; height: 38px; border-radius: 11px; background: var(--pink-soft); color: var(--pink-strong); }
+    .tile-icon[data-color="purple"] { background: var(--lavender); color: var(--purple); }
+    .tile-icon[data-color="peach"] { background: var(--peach); color: var(--coral); }
+    .tool-arrow { color: var(--pink); }
+    .tool-arrow svg { width: 17px; height: 17px; }
+    .tool-card strong { font-size: 16px; }
+    .tool-card .tool-description { font-size: 12px; color: var(--muted); }
+    .tool-card .tool-meta { color: var(--muted); font-size: 11px; margin-top: auto; }
+    kbd { font: 700 11px/1.4 "Segoe UI", sans-serif; display: inline-block; border: 1px solid #ebd9e8; border-bottom-width: 2px; background: #fcf6fb; color: #6d4d67; border-radius: 5px; padding: 1px 5px; }
+    .flat-card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+    .preview-card { display: grid; grid-template-columns: minmax(190px, .75fr) minmax(0, 1.4fr); gap: 14px; padding: 17px; align-items: center; }
+    .preview-card p { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .preview-tabs { gap: 4px; }
+    .preview-tabs button, .segmented button { padding: 5px 9px; border: 1px solid transparent; border-radius: 8px; background: none; font-size: 12px; color: var(--muted); min-height: 34px; }
+    .preview-tabs button:hover, .segmented button:hover { background: #fff2f8; }
+    .preview-tabs button[aria-pressed="true"], .segmented button[aria-current="true"] { background: var(--pink-soft); color: var(--pink-strong); border-color: #f2cde1; font-weight: 800; }
+    .preview-stage { border-radius: 12px; min-height: 110px; display: grid; place-items: center; padding: 12px; background: repeating-linear-gradient(135deg,#faf0f7,#faf0f7 8px,#fbf4fa 8px,#fbf4fa 16px); }
+    .caption { background: var(--overlay); color: #fff7fc; border: 1px solid #8f6891; border-radius: 12px; padding: 10px 12px 12px; box-shadow: 0 5px 16px #3523413d; min-width: 0; }
+    .caption-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+    .caption-label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; font-weight: 700; color: var(--overlay-muted); }
+    .caption-label svg { width: 14px; height: 14px; }
+    .caption-content { line-height: 1.4; font-size: var(--caption-size, 22px); overflow-wrap: anywhere; margin-top: 7px; }
+    .caption-content:empty::after { content: "等待结果…"; color: var(--overlay-muted); font-size: 14px; }
+    .caption.drag .caption-top { cursor: grab; touch-action: none; }
+    .caption.drag .caption-top:active { cursor: grabbing; }
+    .caption.drag { transform: translate(var(--move-x, 0px), var(--move-y, 0px)); }
+    .caption-action { display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: 6px; width: 29px; height: 29px; padding: 0; background: #ffffff10; color: #fff3fb; }
+    .caption-action:hover:not(:disabled) { background: #ffffff24; border-color: #c68db1; }
+    .caption-action svg { width: 15px; height: 15px; }
+    .toolbar-items { gap: 4px; }
+    .preview-stage .caption { width: min(100%, 390px); }
+    .preview-stage .caption-content { font-size: 17px; margin-top: 3px; }
+    .demo-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(208px, 265px); gap: 15px; align-items: start; }
+    .demo-card { padding: 16px; }
+    .demo-header { display: flex; justify-content: space-between; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
+    .demo-header h2, .side-card h2, .settings-group h2 { font-size: 16px; font-weight: 800; }
+    .demo-header .button-row { gap: 5px; }
+    .demo-header .btn { min-height: 34px; padding: 5px 8px; font-size: 12px; }
+    .side-card { padding: 15px; }
+    .side-card > p, .side-card li { color: var(--muted); font-size: 13px; }
+    .side-card > p { margin-top: 7px; }
+    .side-card ol { margin: 8px 0; padding-left: 20px; }
+    .side-card li + li { margin-top: 6px; }
+    .side-card .btn, .side-card .button-row { margin-top: 11px; }
+    .desktop { position: relative; isolation: isolate; min-height: 294px; border: 1px solid #ebdbe8; border-radius: 12px; background: radial-gradient(ellipse at 95% 90%,#eadcf8,transparent 62%), #f9edf5; overflow: hidden; }
+    .desktop-bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #fffafd; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    .desktop-bar i { width: 7px; height: 7px; background: #cd81ae; border-radius: 50%; }
+    .desktop-bar i:nth-child(2) { background: #d9aa83; }
+    .desktop-bar i:nth-child(3) { background: #a68ac2; margin-right: 5px; }
+    .article { margin: 18px 19px 26px; background: #fffdfc; color: #4b3650; border-radius: 9px; padding: 14px 16px; border: 1px solid #eadde8; font-family: Georgia, serif; }
+    .article h3 { font-size: 22px; }
+    .article p { margin-top: 9px; font-size: 16px; }
+    .article p::selection { background: #f1b3d2; color: #392539; }
+    .article .example-selected { background: #f7d5e7; }
+    .demo-caption { position: relative; z-index: 2; margin: 0 15px 14px auto; width: min(calc(100% - 30px), 440px); }
+    .caption-state { color: #fff0fa; font-weight: 400; }
+    .screen-stage { min-height: 370px; }
+    .screen-stage .article { position: absolute; inset: 46px 16px 68px; margin: 0; overflow: hidden; }
+    .screen-stage .demo-caption { position: absolute; bottom: 0; right: 0; }
+    .crop-layer { position: absolute; z-index: 1; inset: 0; touch-action: none; }
+    .crop-layer[data-picking="true"] { cursor: crosshair; background: #311e4a32; }
+    .region { position: absolute; border: 2px solid #a02969; border-radius: 5px; box-shadow: 0 0 0 1px #fff; cursor: move; touch-action: none; }
+    .region[data-paused="true"] { border-style: dashed; border-color: #a1651c; }
+    .region-tools { position: absolute; display: flex; align-items: center; gap: 4px; top: -33px; left: -2px; padding: 2px 4px 2px 7px; border-radius: 7px; background: #392541; color: #fff; white-space: nowrap; font-size: 11px; cursor: default; }
+    .region-tools button { width: 23px; height: 23px; }
+    .region-tools svg { width: 13px; height: 13px; }
+    .region-handle { position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px; border: 2px solid #a02969; border-radius: 4px; background: #fff; cursor: nwse-resize; padding: 0; }
+    .screen-helper { display: flex; align-items: center; gap: 6px; min-height: 31px; color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .screen-helper svg { width: 15px; height: 15px; }
+    .audio-scene { min-height: 360px; }
+    .audio-backdrop { position: absolute; inset: 32px 0 0; overflow: hidden; display: grid; place-items: center; color: #815a9b; background: radial-gradient(ellipse at 22% 23%,#fce0e9,transparent 55%), radial-gradient(ellipse at 80% 38%,#dcc5f5,transparent 55%), #f4e6f7; }
+    .audio-backdrop svg { width: 72px; height: 72px; opacity: .7; }
+    .audio-backdrop::after { content: ""; position: absolute; width: 200px; aspect-ratio: 1; border: 1px dashed #aa84bd; border-radius: 50%; }
+    .audio-scene .demo-caption { position: absolute; right: 0; bottom: var(--audio-bottom, 24px); margin-bottom: 10px; }
+    .audio-history { display: grid; gap: 8px; max-height: 165px; overflow: auto; }
+    .audio-history p { min-width: 0; }
+    .audio-original { color: var(--overlay-muted); display: block; font-size: 12px; }
+    .speaker { width: fit-content; display: block; color: #fff; background: #704467; padding: 1px 5px; border-radius: 4px; font-size: 10px; margin-bottom: 1px; }
+    .form-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .47fr); gap: 15px; align-items: start; }
+    .form-stack { display: grid; gap: 12px; }
+    .settings-group { padding: 16px; scroll-margin-top: 88px; }
+    .settings-group h2 { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .settings-group h2 svg { color: var(--pink); width: 17px; height: 17px; }
+    .fields { display: grid; gap: 10px; }
+    .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .field { display: grid; gap: 3px; min-width: 0; }
+    .field > span:first-child, .field > label { font-weight: 700; font-size: 12px; }
+    .field small { color: var(--muted); }
+    .field input:not([type="checkbox"]), select, .read-only { width: 100%; min-width: 0; min-height: 38px; border: 1px solid #e0c9dc; border-radius: 8px; padding: 5px 9px; background: #fffbfe; color: var(--ink); }
+    .field [aria-invalid="true"] { border-color: #9b2849; }
+    .read-only { display: flex; align-items: center; }
+    .field-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+    .field-line .btn { min-height: 37px; padding: 5px 9px; }
+    .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; }
+    .switch input { appearance: none; width: 35px; height: 20px; border-radius: 14px; border: 1px solid #a4839f; background: #f1e7ef; margin: 0; flex: none; position: relative; cursor: pointer; }
+    .switch input::after { content: ""; width: 12px; height: 12px; background: #85617e; border-radius: 50%; position: absolute; top: 3px; left: 3px; }
+    .switch input:checked { background: var(--pink); border-color: var(--pink); }
+    .switch input:checked::after { left: 18px; background: #fff; }
+    .settings-side { position: sticky; top: 85px; display: grid; gap: 9px; }
+    .segmented { display: flex; gap: 2px; flex-wrap: wrap; margin-bottom: 2px; }
+    .settings-side .caption { margin-top: 11px; }
+    .savebar { position: sticky; bottom: 0; z-index: 3; padding: 9px 11px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+    .savebar p { font-size: 12px; color: var(--muted); }
+    .savebar .button-row { gap: 5px; }
+    .savebar .btn { min-height: 35px; padding-block: 4px; }
+    .savebar p[data-error="true"] { color: #9b2849; }
+    .spec-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .spec-card { padding: 15px 17px; }
+    .spec-card h2 { font-size: 17px; margin-bottom: 7px; }
+    .spec-card p, .spec-card li { font-size: 13px; color: var(--muted); }
+    .spec-card ul { margin: 7px 0 0; padding-left: 20px; }
+    .spec-card li + li { margin-top: 5px; }
+    .span-two { grid-column: 1 / -1; }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 570px; font-size: 13px; }
+    th, td { text-align: left; vertical-align: top; padding: 9px; border-top: 1px solid var(--line); }
+    th { color: var(--ink); font-weight: 800; }
+    td { color: var(--muted); }
+    .icon-grid { display: grid; gap: 7px; grid-template-columns: repeat(auto-fit, minmax(69px, 1fr)); margin-top: 10px; }
+    .icon-grid div { display: grid; justify-items: center; align-content: center; min-height: 61px; gap: 4px; background: #fdf2f8; color: var(--pink-strong); border-radius: 8px; }
+    .icon-grid small { font-size: 11px; }
+    .icon-grid img { display: block; width: 16px; height: 16px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+    .swatches span { padding: 5px 8px; border-radius: 7px; font-size: 12px; border: 1px solid var(--line); }
+    dialog { border: 1px solid var(--line); border-radius: 17px; color: var(--ink); background: #fffbfe; padding: 17px; width: min(450px, calc(100vw - 26px)); box-shadow: 0 15px 55px #3d17493b; }
+    dialog::backdrop { background: #37244069; }
+    dialog h2 { font-size: 19px; }
+    dialog p { color: var(--muted); margin: 6px 0 10px; }
+    .dialog-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .source-list { display: grid; gap: 6px; margin: 8px 0; }
+    .source-option { display: flex; align-items: center; gap: 9px; padding: 7px 9px; min-height: 40px; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px; }
+    .source-option:hover { background: var(--pink-soft); }
+    .source-option .status { margin-left: auto; }
+    .dialog-footer { justify-content: end; margin-top: 12px; }
+    .toast { position: fixed; z-index: 9; bottom: 15px; right: 16px; padding: 8px 12px; border-radius: 9px; border: 1px solid #72546f; background: #39283f; color: #fff7fc; max-width: calc(100% - 30px); box-shadow: 0 5px 18px #3d254b30; }
+    @media (max-width: 1040px) {
+      .shell { grid-template-columns: 174px minmax(0, 1fr); }
+      .sidebar { padding-inline: 12px; }
+      main { padding-inline: 22px; }
+      .top-inner { padding-inline: 22px; }
+      .demo-layout { grid-template-columns: minmax(0, 1fr) 203px; }
+    }
+    @media (max-width: 795px) {
+      .top-inner { height: 60px; padding-inline: 12px; }
+      .shell { display: block; min-height: calc(100vh - 60px); }
+      .sidebar { position: static; height: auto; display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 7px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav-group { display: flex; gap: 4px; }
+      .nav-label, .model-note, .nav-link[aria-current="page"]::after { display: none; }
+      .nav-link { min-height: 38px; padding: 5px 7px; gap: 5px; font-size: 12px; }
+      .nav-link svg { width: 15px; height: 15px; }
+      main { padding: 18px 12px 30px; }
+      .page-head h1 { font-size: 26px; }
+      .hero { min-height: 255px; }
+      .hero-copy { padding-left: 17px; }
+      .hero-art img { height: min(250px, 48vw); }
+      .settings-side { top: 69px; }
+    }
+    @media (max-width: 560px) {
+      .top-actions > .status { display: none; }
+      .sidebar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .nav-group { display: contents; }
+      .nav-link { justify-content: center; }
+      .page-head { margin-bottom: 12px; }
+      .hero { min-height: 220px; }
+      .hero-copy { max-width: 68%; padding-block: 14px; }
+      .hero h2 { font-size: clamp(21px, 6.25vw, 26px); max-width: 10em; }
+      .hero p { font-size: 12px; margin: 6px 0 11px; max-width: 15em; }
+      .hero-art { right: -2%; width: 40%; bottom: 5%; }
+      .hero-art .spark { display: none; }
+      .hero .button-row { gap: 4px; }
+      .hero .btn { font-size: 11px; padding: 5px 6px; min-height: 32px; }
+      .hero .btn svg { width: 13px; height: 13px; }
+      .hero-kicker { font-size: 10px; margin-bottom: 5px; }
+      .tools-grid, .preview-card, .demo-layout, .form-layout, .spec-grid { grid-template-columns: minmax(0, 1fr); }
+      .tools-grid { gap: 6px; }
+      .tool-card { min-height: 90px; }
+      .settings-side { position: static; grid-row: 1; }
+      .settings-side .segmented { display: none; }
+      .desktop { min-height: 320px; }
+      .screen-stage, .audio-scene { min-height: 375px; }
+      .section-head p { display: none; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      button { transition: background .14s, border-color .14s, box-shadow .14s; }
+    }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="i-sakura" viewBox="0 0 24 24"><path d="M12 8c-4-7-8-1-5 2-7-1-7 6-1 6-1 6 6 7 6 1 1 6 8 5 6-1 6 0 6-7-1-6 3-3-1-9-5-2Z"/><path d="M12 12h.01m-2-1h.01m4 0h.01m-2 3h.01"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-select" viewBox="0 0 24 24"><path d="m5 4 14 8-6 1.6-2.3 6L5 4Z"/><path d="M15 4v4m-2-2h4m3 9v4m-2-2h4"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 9V6a2 2 0 0 1 2-2h3m6 0h3a2 2 0 0 1 2 2v3m0 6v3a2 2 0 0 1-2 2h-3m-6 0H6a2 2 0 0 1-2-2v-3M3 12h18m-13 4h5"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 24 24"><path d="M4 13v-2a8 8 0 0 1 16 0v2"/><rect x="4" y="12" width="4" height="7" rx="2"/><rect x="16" y="12" width="4" height="7" rx="2"/><path d="M11 17h2m-2 3h2"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M9.2 4.7 10 3h4l.8 1.7 1.5.9 1.8-.2 2 3.4-1 1.6v1.8l1 1.6-2 3.4-1.8-.2-1.5.9-.8 1.7h-4l-.8-1.7-1.5-.9-1.8.2-2-3.4 1-1.6v-1.8l-1-1.6 2-3.4 1.8.2 1.5-.9Z"/><circle cx="12" cy="11.3" r="2.8"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M13 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10l-6-6Z"/><path d="M13 4v6h6M9 14h6m-6 3h4"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-diagonal" viewBox="0 0 24 24"><path d="M6 18 18 6M8 6h10v10"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M10 3c0 5-2 7-7 7 5 0 7 2 7 7 0-5 2-7 7-7-5 0-7-2-7-7Zm8 11c0 2-1 3-3 3 2 0 3 1 3 3 0-2 1-3 3-3-2 0-3-1-3-3Zm1-11v4m-2-2h4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+    <symbol id="i-tray" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 14h18m-7 2.5h.01m3 0h.01M9 11l3-3 3 3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12m6-12v12" stroke-width="2.5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l3 3h5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24"><path d="m4 18 5-12 5 12M6 14h6m3 4 3-8 3 8m-5-3h4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01m3 0h.01m4 0h.01m3 0h.01M7 14h.01m10 0h.01m-7 0h4"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5m0-8h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-1 6m1-11v5h-5"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6m-1-8h10m-4-4 4 4-4 4"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18m-14 5h9m-9 3h5"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.01m6 0h.01M9 12h.01m6 0h.01M9 18h.01m6 0h.01" stroke-width="2.8"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="top-inner">
+      <button class="brand" type="button" data-page="home" aria-label="樱语翻译工作台">
+        <img class="brand-icon" src="../src/Translator.Desktop/Assets/sakura-avatar.png" width="42" height="42" alt="">
+        <span><strong>樱语翻译</strong><small>Sakura Translator</small></span>
+      </button>
+      <div class="top-actions">
+        <span id="runtime-badge" class="status">本地运行</span>
+        <div class="tray-wrap" id="tray-wrap">
+          <button id="tray-button" class="btn" type="button" aria-expanded="false" aria-controls="tray"><span data-icon="tray"></span>托盘菜单<span data-icon="chevron"></span></button>
+          <div id="tray" class="tray-popover" hidden>
+            <h2>系统托盘 · 预览</h2>
+            <button type="button" data-page="home"><span data-icon="home"></span>打开工作台</button>
+            <button type="button" data-act="selection-toggle"><span data-icon="select"></span>选区翻译<small id="tray-selection"></small></button>
+            <button type="button" data-act="ocr-toggle"><span data-icon="scan"></span><span id="tray-ocr"></span></button>
+            <button type="button" data-act="ocr-pause" id="tray-ocr-pause" hidden><span data-icon="pause"></span><span id="tray-ocr-pause-label"></span></button>
+            <button type="button" data-act="audio-toggle"><span data-icon="audio"></span><span id="tray-audio"></span></button>
+            <button type="button" data-act="sources"><span data-icon="window"></span>选择音频程序</button>
+            <hr>
+            <button type="button" data-act="release"><span data-icon="chip"></span>释放模型</button>
+            <button type="button" data-page="settings"><span data-icon="gear"></span>设置</button>
+            <button type="button" data-act="exit"><span data-icon="exit"></span>退出演示</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell" id="shell">
+    <nav class="sidebar" aria-label="主导航">
+      <div class="nav-group">
+        <p class="nav-label">概览</p>
+        <button class="nav-link" type="button" data-page="home" aria-current="page"><span data-icon="home"></span>工作台</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-label">翻译工具</p>
+        <button class="nav-link" type="button" data-page="selection"><span data-icon="select"></span>选区翻译</button>
+        <button class="nav-link" type="button" data-page="ocr"><span data-icon="scan"></span>持续 OCR</button>
+        <button class="nav-link" type="button" data-page="audio"><span data-icon="audio"></span>音频字幕</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-label">应用</p>
+        <button class="nav-link" type="button" data-page="settings"><span data-icon="gear"></span>设置</button>
+        <button class="nav-link" type="button" data-page="design"><span data-icon="doc"></span>设计说明</button>
+      </div>
+      <div class="model-note">
+        <div class="note-head"><span data-icon="chip"></span><span id="model-title">本地模型</span></div>
+        <p id="model-line">Qwen3.5-4B · CUDA</p>
+        <button type="button" data-page="settings">模型设置<span data-icon="arrow"></span></button>
+      </div>
+    </nav>
+
+    <main id="main">
+      <section data-view="home" aria-labelledby="home-title">
+        <header class="page-head"><h1 id="home-title" tabindex="-1">工作台</h1><p>译文只在本机处理，支持英语和日语转简体中文。</p></header>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <div class="hero-kicker"><span data-icon="sakura"></span>桌面翻译交互原型</div>
+            <h2 id="hero-title">今天，想<span>翻译</span>什么？</h2>
+            <p>从划词、屏幕区域或应用音频开始，译文会在浮窗里逐步出现。</p>
+            <div class="button-row">
+              <button class="btn primary" type="button" data-act="selection-demo"><span data-icon="select"></span>体验选区翻译</button>
+              <button class="btn" type="button" data-act="preview-jump"><span data-icon="eye"></span>查看浮窗</button>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="hero-ring"></div><span class="spark first" data-icon="sparkles"></span>
+            <img src="../src/Translator.Desktop/Assets/sakura-mascot.webp" width="720" height="720" alt="">
+            <span class="spark second" data-icon="sparkles"></span>
+          </div>
+        </section>
+        <section class="section" aria-labelledby="tools-title">
+          <div class="section-head"><h2 id="tools-title"><span data-icon="sparkles"></span>快捷工具</h2></div>
+          <div class="tools-grid">
+            <button class="tool-card" type="button" data-page="selection"><span class="tool-top"><span class="tile-icon" data-icon="select"></span><span class="tool-arrow" data-icon="diagonal"></span></span><strong>选区翻译</strong><span class="tool-description">选择文本，在原文附近阅读译文。</span><span class="tool-meta" id="selection-card-status">划词监听已开启</span></button>
+            <button class="tool-card" type="button" data-page="ocr"><span class="tool-top"><span class="tile-icon" data-color="purple" data-icon="scan"></span><span class="tool-arrow" data-icon="diagonal"></span></span><strong>持续 OCR</strong><span class="tool-description">框选屏幕，内容变化时自动更新译文。</span><span class="tool-meta" data-shortcut="ocr"></span></button>
+            <button class="tool-card" type="button" data-page="audio"><span class="tool-top"><span class="tile-icon" data-color="peach" data-icon="audio"></span><span class="tool-arrow" data-icon="diagonal"></span></span><strong>音频字幕</strong><span class="tool-description">选择正在播放的程序，获取实时字幕。</span><span class="tool-meta" data-shortcut="audio"></span></button>
+          </div>
+        </section>
+        <section id="preview" class="section" aria-labelledby="preview-title">
+          <div class="section-head"><h2 id="preview-title" tabindex="-1"><span data-icon="window"></span>浮窗预览</h2><p>切换场景，查看对应的工具栏</p></div>
+          <div class="flat-card preview-card">
+            <div>
+              <div class="preview-tabs" role="group" aria-label="浮窗场景">
+                <button type="button" data-preview="selection" aria-pressed="true">选区译文</button>
+                <button type="button" data-preview="ocr" aria-pressed="false">OCR 译文</button>
+                <button type="button" data-preview="audio" aria-pressed="false">音频字幕</button>
+              </div>
+              <p id="preview-hint"></p>
+            </div>
+            <div class="preview-stage"><div id="home-caption" class="caption"></div></div>
+          </div>
+        </section>
+      </section>
+
+      <section data-view="selection" aria-labelledby="selection-title" hidden>
+        <header class="page-head"><div class="title-row"><h1 id="selection-title" tabindex="-1">选区翻译</h1><span id="selection-status" class="status"></span></div><p>选中文本后，译文浮窗出现在选区附近。</p></header>
+        <div class="demo-layout">
+          <section class="flat-card demo-card" aria-labelledby="selection-demo-title">
+            <div class="demo-header"><h2 id="selection-demo-title">划词演示</h2><button type="button" class="btn primary" data-act="translate"><span data-icon="select"></span>翻译示例</button></div>
+            <div class="desktop" id="selection-stage">
+              <div class="desktop-bar"><i></i><i></i><i></i> 英文阅读示例</div>
+              <article class="article" lang="en"><h3>A quiet afternoon</h3><p id="selection-text">The wind carried the scent of cherry blossoms through the open window.</p><p>For a moment, the whole city seemed to slow down.</p></article>
+              <div id="selection-caption" class="caption demo-caption drag" hidden></div>
+            </div>
+          </section>
+          <aside class="flat-card side-card"><h2>划词监听</h2><p>开启后，用鼠标选中示例段落中的文字即可触发译文。也可以用按钮体验同一流程。</p><button id="selection-toggle" type="button" class="btn" data-act="selection-toggle" aria-pressed="true"></button><p>拖动浮窗标题栏可移动。停止生成后，已出现的译文可以继续复制。</p></aside>
+        </div>
+      </section>
+
+      <section data-view="ocr" aria-labelledby="ocr-title" hidden>
+        <header class="page-head"><div class="title-row"><h1 id="ocr-title" tabindex="-1">持续 OCR</h1><span id="ocr-status" class="status"></span></div><p>监测固定屏幕区域，在内容变化时刷新译文。</p></header>
+        <div class="demo-layout">
+          <section class="flat-card demo-card" aria-labelledby="ocr-demo-title">
+            <div class="demo-header"><h2 id="ocr-demo-title">屏幕框选演示</h2><div class="button-row"><button type="button" id="ocr-pick" class="btn primary" data-act="ocr-pick"><span data-icon="scan"></span>开始框选</button><button type="button" class="btn" data-act="ocr-sample">使用示例选区</button></div></div>
+            <div class="desktop screen-stage" id="screen-stage">
+              <div class="desktop-bar"><i></i><i></i><i></i> 屏幕内容示例</div>
+              <article class="article" lang="en"><h3>🌸  After the Rain</h3><p id="ocr-original"></p><p>The evening train will arrive soon.</p></article>
+              <div id="crop-layer" class="crop-layer" hidden>
+                <div id="region" class="region" tabindex="0" role="group" aria-label="OCR 选区，方向键移动，Shift 加方向键改变大小">
+                  <div id="region-tools" class="region-tools"><span id="region-label">监测区域</span><button type="button" class="caption-action" data-act="ocr-pause" aria-label="暂停识别" title="暂停识别"><span data-icon="pause"></span></button><button type="button" class="caption-action" data-act="ocr-end" aria-label="结束 OCR" title="结束 OCR"><span data-icon="close"></span></button></div>
+                  <button type="button" class="region-handle" tabindex="-1" aria-label="拖动调整选区大小"></button>
+                </div>
+              </div>
+              <div id="ocr-caption" class="caption demo-caption drag" hidden></div>
+            </div>
+            <p class="screen-helper"><span data-icon="info"></span><span id="ocr-hint"></span></p>
+          </section>
+          <aside class="flat-card side-card"><h2>框选与控制</h2><p>全局快捷键 <span data-shortcut="ocr"></span></p><ol><li>拖动框出文字，或使用示例选区。</li><li>拖动选框移动位置，拖右下角调整大小。</li><li>暂停保留选框与译文，结束移除两者。</li></ol><button id="ocr-change" type="button" class="btn" data-act="ocr-change"><span data-icon="refresh"></span>更换屏幕内容</button></aside>
+        </div>
+      </section>
+
+      <section data-view="audio" aria-labelledby="audio-title" hidden>
+        <header class="page-head"><div class="title-row"><h1 id="audio-title" tabindex="-1">音频字幕</h1><span id="audio-status" class="status"></span></div><p>选择一个应用，听到的内容将逐行转写、翻译和修订。</p></header>
+        <div class="demo-layout">
+          <section class="flat-card demo-card" aria-labelledby="audio-demo-title">
+            <div class="demo-header"><h2 id="audio-demo-title">字幕演示</h2><div class="button-row"><button type="button" id="audio-source-button" class="btn primary" data-act="sources"><span data-icon="audio"></span>选择音频程序</button><button type="button" id="audio-toggle-button" class="btn" data-act="audio-toggle"></button></div></div>
+            <div class="desktop audio-scene" id="audio-stage">
+              <div class="desktop-bar"><i></i><i></i><i></i><span id="audio-source-label">等待选择程序</span></div>
+              <div class="audio-backdrop" aria-hidden="true"><span data-icon="audio"></span></div>
+              <div id="audio-caption" class="caption demo-caption drag" hidden></div>
+            </div>
+          </section>
+          <aside class="flat-card side-card"><h2>音频与显示</h2><p>全局快捷键 <span data-shortcut="audio"></span></p><p id="audio-model-label"></p><p>停止后可继续阅读和复制已显示的字幕。关闭浮窗结束会话。</p><button type="button" class="btn" data-page="settings" data-focus-group="audio-settings"><span data-icon="gear"></span>字幕设置</button></aside>
+        </div>
+      </section>
+
+      <section data-view="settings" aria-labelledby="settings-title" hidden>
+        <header class="page-head"><h1 id="settings-title" tabindex="-1">设置</h1><p>管理本地模型、翻译偏好、字幕显示与快捷键。</p></header>
+        <div class="form-layout">
+          <form id="settings-form" class="form-stack" novalidate>
+            <section id="model-settings" class="settings-group flat-card" aria-labelledby="model-heading">
+              <h2 id="model-heading"><span data-icon="chip"></span>本地模型</h2>
+              <div class="fields">
+                <div class="field"><label for="model-directory">模型目录</label><div class="field-line"><input id="model-directory" name="modelDirectory" required><button type="button" class="btn" data-act="browse"><span data-icon="folder"></span>浏览</button></div></div>
+                <label class="field"><span>翻译模型</span><select name="model"><option value="">请选择 GGUF 模型</option><option value="4B">Qwen3.5-4B · Q4_K_M</option><option value="9B">Qwen3.5-9B · Q4_K_M</option></select></label>
+                <label class="switch"><input type="checkbox" name="gpu">优先使用 GPU</label>
+                <label class="switch"><input type="checkbox" name="fallback">GPU 不可用时使用 CPU</label>
+                <p class="muted" id="model-runtime"></p>
+              </div>
+            </section>
+            <section id="display-settings" class="settings-group flat-card" aria-labelledby="display-heading">
+              <h2 id="display-heading"><span data-icon="type"></span>语言与显示</h2>
+              <div class="fields">
+                <div class="columns"><label class="field"><span>源语言</span><select name="language"><option>自动检测</option><option>英语</option><option>日语</option></select></label><div class="field"><span>目标语言</span><div class="read-only">简体中文</div></div></div>
+                <div class="columns"><label class="field"><span>浮窗译文字号（px）</span><input name="font" type="number" min="14" max="44" step="1" required></label><label class="field"><span>音频字幕底部间距（px）</span><input name="bottom" type="number" min="16" max="240" step="4" required></label></div>
+                <label class="switch"><input type="checkbox" name="bilingual">音频字幕同时显示原文</label>
+              </div>
+            </section>
+            <section id="audio-settings" class="settings-group flat-card" aria-labelledby="audio-settings-heading">
+              <h2 id="audio-settings-heading"><span data-icon="audio"></span>音频转写</h2>
+              <div class="fields">
+                <label class="field"><span>音频转写模型</span><select name="asr"><option>Whisper Base</option><option>Nemotron 3.5 · 流式</option><option>Qwen3-ASR 0.6B · 本地分块</option></select></label>
+                <label class="field"><span>转写模型目录（可选）</span><input name="asrDirectory" placeholder="使用默认目录"></label>
+                <label class="switch"><input type="checkbox" name="speakers">区分说话者</label>
+                <p class="muted">更改转写模型、目录或说话者标注后，正在运行的字幕会话会重新开始。</p>
+              </div>
+            </section>
+            <section id="shortcut-settings" class="settings-group flat-card" aria-labelledby="shortcut-heading">
+              <h2 id="shortcut-heading"><span data-icon="key"></span>全局快捷键</h2>
+              <div class="columns"><label class="field"><span>持续 OCR</span><input name="ocrKey" spellcheck="false" required></label><label class="field"><span>音频字幕</span><input name="audioKey" spellcheck="false" required></label></div>
+              <p class="muted">例如 Ctrl + Alt + O。可使用字母、数字或 F1–F12，并搭配修饰键。</p>
+            </section>
+            <div class="savebar flat-card"><p id="settings-message" role="status">修改仅保存到此原型</p><div class="button-row"><button class="btn quiet" id="discard-settings" type="button" data-act="discard" disabled>撤销修改</button><button class="btn primary" id="save-settings" type="submit" disabled>保存设置</button></div></div>
+          </form>
+          <aside class="flat-card side-card settings-side"><h2>显示预览</h2><div class="segmented" aria-label="设置分组"><button type="button" data-jump="model-settings">模型</button><button type="button" data-jump="display-settings">显示</button><button type="button" data-jump="audio-settings">转写</button><button type="button" data-jump="shortcut-settings">快捷键</button></div><p>在保存前预览字号、原文与说话者标注。</p><div class="caption" id="settings-caption"></div></aside>
+        </div>
+      </section>
+
+      <section data-view="design" aria-labelledby="design-title" hidden>
+        <header class="page-head"><h1 id="design-title" tabindex="-1">设计说明</h1><p>现有交互检查与 Windows 桌面改版方案。</p></header>
+        <div class="spec-grid">
+          <section class="flat-card spec-card span-two" aria-labelledby="review-heading">
+            <h2 id="review-heading">现状与改版对照</h2>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="交互检查对照表"><table><thead><tr><th scope="col">界面</th><th scope="col">现有交互</th><th scope="col">原型方案</th></tr></thead><tbody>
+              <tr><th scope="row">工作台与托盘</th><td>功能入口集中在托盘，音频程序在子菜单中。</td><td>工作台展示三个入口和浮窗预览，托盘保留状态、快速操作、模型释放和退出。</td></tr>
+              <tr><th scope="row">选区译文</th><td>译文靠近选区，悬停可用复制、停止和关闭，完成后自动收起。</td><td>工具栏可见且可聚焦，停止只取消当前生成，保留内容供复制。原型保留完成译文以便检查。</td></tr>
+              <tr><th scope="row">框选与 OCR</th><td>框选、移动和缩放均依靠鼠标。选框/托盘暂停会收起译文，浮窗停止会保留译文。</td><td>统一暂停为保留选框与译文。结束移除两者。提供示例选区与键盘移动、缩放。</td></tr>
+              <tr><th scope="row">音频字幕</th><td>从托盘选择程序，停止后可保留历史，关闭会话时清除浮窗。</td><td>展示当前来源与转写状态，独立呈现等待语音、流式、修订和停止。复制取已显示历史。</td></tr>
+              <tr><th scope="row">设置与异常</th><td>模型、显示、音频与快捷键同页编辑，错误集中在底部反馈区。</td><td>分组和即时预览，底部显示保存状态。出错时定位到对应字段，输入可继续编辑。</td></tr>
+              <tr><th scope="row">图标与操作</th><td>托盘使用应用图标，浮窗工具栏与选框各自绘制图形。</td><td>应用与托盘使用角色头像，托盘按 16 px 显示。操作图标使用圆角线条，并提供动作标题和无障碍名称。</td></tr>
+            </tbody></table></div>
+          </section>
+          <section class="flat-card spec-card"><h2>视觉与可访问性</h2><ul><li>浅樱粉用于工作区，莓粉用于主操作，深梅色用于跨背景阅读的浮窗。</li><li>状态同时显示文字与色彩。图标按钮支持 Tab、可见焦点和快捷键提示。</li><li>正文与浮窗共享字号规则。角色插画保留在工作台，屏幕浮窗集中呈现译文。</li></ul><div class="swatches" aria-label="配色样例"><span style="background:#fff8fb">工作区 #FFF8FB</span><span style="background:#ab316b;color:#fff">主操作 #AB316B</span><span style="background:#33243e;color:#fff">浮窗 #33243E</span></div></section>
+          <section class="flat-card spec-card"><h2>状态与反馈</h2><ul><li>没有可用 GGUF 模型时，引导进入模型设置。</li><li>音频列表区分正在播放与空闲，并提供刷新与空列表状态。</li><li>保存前校验目录格式、数值和重复快捷键。原生版本实际检查设备、文件和系统快捷键占用。</li><li>浏览器使用示例资料演示状态。桌面采集、模型推理与系统级快捷键由原生程序实现。</li></ul></section>
+          <section class="flat-card spec-card span-two"><h2>图标一览</h2><p>线条使用 24 × 24 网格，常规界面显示 18–20 px，浮窗显示 15 px。操作名随状态切换。</p><div id="icon-grid" class="icon-grid"></div></section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <main id="restore" hidden><div class="page-head"><h1 tabindex="-1">已退出演示</h1><p>当前模拟监测和字幕会话已结束。</p></div><button type="button" class="btn primary" data-act="restore">重新打开工作台</button></main>
+  <dialog id="source-dialog" aria-labelledby="source-heading"><div class="dialog-line"><h2 id="source-heading">选择音频程序</h2><button class="btn icon-button" type="button" data-act="dialog-close" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div><p>选择程序后开始显示字幕。音频来源为模拟数据。</p><div id="source-list" class="source-list"></div><div class="dialog-line"><button type="button" class="btn" data-act="source-refresh"><span data-icon="refresh"></span>刷新列表</button><label class="switch"><input id="empty-sources" type="checkbox">演示空列表</label></div></dialog>
+  <dialog id="folder-dialog" aria-labelledby="folder-heading"><div class="dialog-line"><h2 id="folder-heading">选择示例模型目录</h2><button class="btn icon-button" type="button" data-act="dialog-close" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div><p>原型用这些目录模拟本地文件浏览。</p><div class="source-list"><button type="button" class="source-option" data-folder="C:\Models\Translator"><span data-icon="folder"></span>C:\Models\Translator</button><button type="button" class="source-option" data-folder="D:\AI\GGUF"><span data-icon="folder"></span>D:\AI\GGUF</button></div></dialog>
+  <dialog id="exit-dialog" aria-labelledby="exit-heading"><h2 id="exit-heading">退出演示？</h2><p>将结束模拟监测和字幕会话。</p><div class="button-row dialog-footer"><button type="button" class="btn" data-act="dialog-close" autofocus>取消</button><button type="button" class="btn primary" data-act="exit-confirm">退出</button></div></dialog>
+  <div id="toast" class="toast" aria-hidden="true" hidden></div>
+  <div id="announcement" class="sr-only" role="status"></div>
+
+  <!-- Illustration prompt (built-in ImageGen)
+  Use case: illustration-story. Create a single original chibi anime mascot sticker for a pink Windows translation assistant called Sakura Translator. Square transparent PNG with alpha, centered composition fully visible with generous 6 percent margin. A cute strawberry-pink-haired adult anime character drawn as a tiny chibi with large plum eyes, two rounded twin hair buns, soft straight fringe, little white sakura hair clip, blush, a cream-and-pink pastel oversized cardigan and lavender bows, holding one oversized pale lilac speech-bubble cushion with three deep mauve tidy dots. Half body with short arms and paws resting on the cushion. Facing slightly left, joyful gentle expression. Surround with three small sparse floating cherry-blossom petals and two tiny cream four-point stars, kept close to character. Premium polished kawaii anime visual novel sticker, clean tapered muted plum outlines, cel shading with soft tidy highlights, warm white accents, sophisticated pastel color palette, restrained detail at small sizes. Transparent canvas, no opaque background, no panels, no lettering, no text, no watermark, no shadow plane. Strong compact silhouette, one main character.
+  -->
+  <!-- Avatar prompt (built-in ImageGen): 用参考图中的樱语角色制作 Windows 应用头像图标。保持粉色双丸子头、紫梅色大眼、樱花发夹、淡紫蝴蝶结和原来的萌系二次元画风。正脸微笑，近景大头，脸从额头到下巴占画面大半，头发贴近边缘。浅樱粉圆角方底，四角透明，轮廓清晰，16 像素仍能辨认。去掉对话气泡、手和周围装饰，不加文字。 -->
+  <script>
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const all = (selector, container = document) => Array.from(container.querySelectorAll(selector));
+    const defaults = {
+      modelDirectory: 'C:\\Models\\Translator', model: '4B', gpu: true, fallback: true,
+      language: '自动检测', font: '22', bottom: '64', bilingual: false, speakers: false,
+      asr: 'Whisper Base', asrDirectory: '', ocrKey: 'Ctrl + Alt + O', audioKey: 'Ctrl + Alt + S'
+    };
+    const storageKey = 'translator.sakura.prototype.v1';
+    const positionsKey = `${storageKey}.positions`;
+    const savedPositions = readLocal(positionsKey);
+    const selection = { enabled: true, phase: 'idle', text: '' };
+    const ocr = { phase: 'idle', rect: null, priorPhase: 'idle', priorRect: null, text: '', sample: 0 };
+    const audio = { source: '', phase: 'idle', shown: false, count: 0 };
+    const demoSources = [
+      { name: 'Microsoft Edge', active: true }, { name: 'VLC media player', active: true }, { name: 'Google Chrome', active: false }
+    ];
+    const ocrSamples = [
+      ['Rain pearls shimmer on the petals.', '花瓣上的雨珠闪闪发亮。'],
+      ['A breeze rises as the sky clears.', '天空放晴，微风轻轻吹起。'],
+      ['The park lights are coming on.', '公园里的灯一盏盏亮了起来。']
+    ];
+    const transcript = [
+      { zh: '欢迎来到今天的节目。', en: 'Welcome to today’s episode.', speaker: '说话者 1' },
+      { zh: '我们来聊聊春天的第一场雨。', en: 'Let’s talk about the first spring shower.', speaker: '' },
+      { zh: '我记得，那天樱花开得正好。', en: 'I remember the cherry blossoms were in full bloom.', speaker: '说话者 2' }
+    ];
+    const selectionTranslations = [
+      '微风把樱花的香气送进敞开的窗户。', '有那么一瞬间，整座城市仿佛慢了下来。'
+    ];
+    let settings = loadSettings();
+    let currentPage = 'home';
+    let currentPreview = 'selection';
+    let previewPaused = false;
+    let modelReleased = false;
+    let exited = false;
+    let toastTimer;
+    let regionDrag;
+    let dialogTrigger;
+
+    function readLocal(key) {
+      try { return JSON.parse(localStorage.getItem(key)) ?? {}; }
+      catch { return {}; }
+    }
+
+    function loadSettings() { return { ...defaults, ...readLocal(storageKey) }; }
+
+    function actionButton(label, glyph, action, className = 'caption-action') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.dataset.act = action;
+      setAction(button, label, glyph, className === 'caption-action');
+      return button;
+    }
+
+    function icon(name) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.classList.add('icon');
+      svg.setAttribute('aria-hidden', 'true');
+      const use = document.createElementNS(svg.namespaceURI, 'use');
+      use.setAttribute('href', `#i-${name}`);
+      svg.append(use);
+      return svg;
+    }
+
+    function setAction(button, label, glyph, iconOnly = false) {
+      if (button.dataset.label === label && button.dataset.glyph === glyph) return;
+      button.dataset.label = label;
+      button.dataset.glyph = glyph;
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.replaceChildren(icon(glyph));
+      if (!iconOnly) button.append(document.createTextNode(label));
+    }
+
+    function badge(element, label, tone = 'ok') {
+      if (element.textContent !== label) element.textContent = label;
+      element.dataset.tone = tone;
+    }
+
+    function notify(text) {
+      clearTimeout(toastTimer);
+      $('toast').hidden = false;
+      $('toast').textContent = text;
+      $('announcement').textContent = text;
+      toastTimer = setTimeout(() => { $('toast').hidden = true; }, 3300);
+    }
+
+    function showPage(name, focusHeading = true) {
+      if (!document.querySelector(`[data-view="${name}"]`)) name = 'home';
+      if (currentPage === 'ocr' && name !== 'ocr' && ocr.phase === 'picking') cancelPick();
+      closeTray();
+      currentPage = name;
+      all('[data-view]').forEach((page) => { page.hidden = page.dataset.view !== name; });
+      all('nav [data-page]').forEach((button) => {
+        if (button.dataset.page === name) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      });
+      if (name === 'ocr') renderRegion();
+      if (name === 'audio' && audio.shown) audioCaption.resetPosition();
+      if (focusHeading) {
+        window.scrollTo(0, 0);
+        $(`${name}-title`).focus({ preventScroll: true });
+      }
+    }
+
+    function jumpTo(id) {
+      const section = $(id);
+      section.scrollIntoView({ block: 'start' });
+      if (!section.hasAttribute('tabindex')) section.tabIndex = -1;
+      section.focus({ preventScroll: true });
+      all('[data-jump]').forEach((button) => {
+        if (button.dataset.jump === id) button.setAttribute('aria-current', 'true');
+        else button.removeAttribute('aria-current');
+      });
+    }
+
+    function closeTray(restoreFocus = false) {
+      if ($('tray').hidden) return;
+      $('tray').hidden = true;
+      $('tray-button').setAttribute('aria-expanded', 'false');
+      if (restoreFocus) $('tray-button').focus();
+    }
+
+    function toggleTray() {
+      if (!$('tray').hidden) { closeTray(); return; }
+      $('tray').hidden = false;
+      $('tray-button').setAttribute('aria-expanded', 'true');
+      $('tray').querySelector('button').focus();
+    }
+
+    function openDialog(id, trigger) {
+      dialogTrigger = $('tray').contains(trigger) ? $('tray-button') : trigger;
+      closeTray();
+      $(id).showModal();
+    }
+
+    function renderRuntime() {
+      const backend = settings.gpu ? 'CUDA' : 'CPU';
+      $('model-title').textContent = settings.model ? '本地模型' : '尚未选择模型';
+      $('model-line').textContent = settings.model
+        ? `Qwen3.5-${settings.model} · ${modelReleased ? '已释放' : backend}`
+        : '请选择本地 GGUF 文件';
+      $('model-runtime').textContent = settings.model
+        ? `运行状态示例 · ${modelReleased ? '模型已释放' : `${backend} 已就绪`}`
+        : '请选择模型目录和翻译模型。';
+      const status = exited ? '演示已退出' : !settings.model ? '未配置模型' : modelReleased ? '模型已释放' : '本地运行';
+      badge($('runtime-badge'), status, status === '本地运行' ? 'ok' : 'idle');
+      $('audio-model-label').textContent = `转写模型 · ${settings.asr}`;
+    }
+
+    function ensureModel() {
+      if (!settings.model) {
+        showPage('settings');
+        jumpTo('model-settings');
+        notify('请先在设置中选择 GGUF 模型。');
+        return false;
+      }
+      if (modelReleased) {
+        modelReleased = false;
+        renderRuntime();
+        notify('已重新加载示例模型。');
+      }
+      return true;
+    }
+
+    function createCaption(id) {
+      const root = $(id);
+      const head = document.createElement('div');
+      head.className = 'caption-top';
+      const label = document.createElement('div');
+      label.className = 'caption-label';
+      const glyph = document.createElement('span');
+      const title = document.createElement('span');
+      const status = document.createElement('span');
+      status.className = 'caption-state';
+      const controls = document.createElement('div');
+      controls.className = 'toolbar-items';
+      controls.setAttribute('role', 'group');
+      controls.setAttribute('aria-label', '浮窗操作');
+      const content = document.createElement('div');
+      content.className = 'caption-content';
+      label.append(glyph, title, status);
+      head.append(label, controls);
+      root.append(head, content);
+      return { root, head, glyph, title, status, controls, content };
+    }
+
+    function labelCaption(caption, title, glyph, status = '') {
+      if (caption.glyph.dataset.name !== glyph) {
+        caption.glyph.dataset.name = glyph;
+        caption.glyph.replaceChildren(icon(glyph));
+      }
+      if (caption.title.textContent !== title) caption.title.textContent = title;
+      if (caption.status.textContent !== status) caption.status.textContent = status;
+    }
+
+    function controlsFor(caption, actions) {
+      const buttons = actions.map(([label, glyph, action]) => actionButton(label, glyph, action));
+      caption.controls.replaceChildren(...buttons);
+      return buttons;
+    }
+
+    async function copyText(text, button) {
+      if (!text) return;
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.cssText = 'position:fixed;left:0;top:0;opacity:0';
+        document.body.append(temp);
+        temp.select();
+        try { copied = document.execCommand('copy'); }
+        catch { copied = false; }
+        finally { temp.remove(); button?.focus(); }
+      }
+      if (!copied) { notify('复制失败，可以选中译文后手动复制。'); return; }
+      notify('已复制译文');
+      if (button) {
+        const label = button.dataset.label;
+        setAction(button, '已复制', 'check', true);
+        if (label !== '已复制') setTimeout(() => setAction(button, label, 'copy', true), 1400);
+      }
+    }
+
+    function enableCaptionDrag(caption, persistent = false) {
+      const position = { x: 0, y: 0 };
+      let drag;
+      const { root, head } = caption;
+      function move(x, y) {
+        position.x = x;
+        position.y = y;
+        root.style.setProperty('--move-x', `${x}px`);
+        root.style.setProperty('--move-y', `${y}px`);
+      }
+      function moveWithinStage(x, y) {
+        const bounds = root.parentElement.getBoundingClientRect();
+        const box = root.getBoundingClientRect();
+        const left = bounds.left + 3 - box.left + position.x;
+        const right = bounds.right - 3 - box.right + position.x;
+        const top = bounds.top + 3 - box.top + position.y;
+        const bottom = bounds.bottom - 3 - box.bottom + position.y;
+        move(clamp(x, left, right), clamp(y, top, bottom));
+      }
+      function savePosition() {
+        if (!persistent) return;
+        savedPositions[root.id] = { ...position };
+        try { localStorage.setItem(positionsKey, JSON.stringify(savedPositions)); }
+        catch { /* The demo can still remember the position until it closes. */ }
+      }
+      caption.resetPosition = () => {
+        const saved = savedPositions[root.id];
+        move(0, 0);
+        if (saved && root.offsetWidth) moveWithinStage(saved.x, saved.y);
+      };
+      const grip = document.createElement('span');
+      grip.tabIndex = 0;
+      grip.setAttribute('role', 'group');
+      grip.setAttribute('aria-label', '浮窗拖动区，使用方向键移动');
+      grip.title = '拖动浮窗，或聚焦此处后按方向键';
+      grip.append(icon('grip'));
+      caption.head.firstElementChild.prepend(grip);
+      grip.addEventListener('keydown', (event) => {
+        const delta = arrows[event.key];
+        if (!delta) return;
+        event.preventDefault();
+        moveWithinStage(position.x + delta[0] * 8, position.y + delta[1] * 8);
+        savePosition();
+      });
+      head.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || event.target.closest('button')) return;
+        drag = { x: event.clientX - position.x, y: event.clientY - position.y };
+        head.setPointerCapture(event.pointerId);
+      });
+      head.addEventListener('pointermove', (event) => {
+        if (drag) moveWithinStage(event.clientX - drag.x, event.clientY - drag.y);
+      });
+      head.addEventListener('lostpointercapture', () => {
+        if (drag) savePosition();
+        drag = null;
+      });
+    }
+
+    const homeCaption = createCaption('home-caption');
+    const selectionCaption = createCaption('selection-caption');
+    const ocrCaption = createCaption('ocr-caption');
+    const audioCaption = createCaption('audio-caption');
+    const settingsCaption = createCaption('settings-caption');
+    const [selectionCopy, selectionStop] = controlsFor(selectionCaption, [
+      ['复制译文', 'copy', 'selection-copy'], ['停止生成', 'stop', 'selection-stop'], ['关闭译文', 'close', 'selection-close']
+    ]);
+    const [ocrCopy, ocrPause] = controlsFor(ocrCaption, [
+      ['复制译文', 'copy', 'ocr-copy'], ['暂停识别', 'pause', 'ocr-pause'], ['结束 OCR', 'close', 'ocr-end']
+    ]);
+    const [audioCopy, audioStop] = controlsFor(audioCaption, [
+      ['复制字幕历史', 'copy', 'audio-copy'], ['停止字幕', 'stop', 'audio-stop'], ['关闭字幕', 'close', 'audio-close']
+    ]);
+    const [previewCopy, previewPause, previewClose] = controlsFor(homeCaption, [
+      ['复制预览文字', 'copy', 'preview-copy'], ['停止生成', 'stop', 'preview-pause'], ['关闭译文', 'close', 'preview-close']
+    ]);
+
+    function renderPreview() {
+      const previews = {
+        selection: ['选区译文', 'select', '· 正在翻译', selectionTranslations[0], '停止生成会保留已出现的译文。', '停止生成', 'stop'],
+        ocr: ['持续 OCR', 'scan', '· 正在监测', ocrSamples[0][1], '暂停保留译文和选区，恢复后继续监测。', '暂停识别', 'pause'],
+        audio: ['音频字幕', 'audio', '· 正在转写', transcript[0].zh, '停止字幕保留历史，可复制全部已显示译文。', '停止字幕', 'stop']
+      };
+      const [title, glyph, status, text, hint, action, actionGlyph] = previews[currentPreview];
+      const pausedStatus = currentPreview === 'ocr' ? '· 已暂停' : '· 已停止';
+      labelCaption(homeCaption, title, glyph, previewPaused ? pausedStatus : status);
+      homeCaption.content.textContent = text;
+      const close = currentPreview === 'ocr' ? '结束 OCR' : currentPreview === 'audio' ? '关闭字幕' : '关闭译文';
+      const canResume = currentPreview === 'ocr';
+      setAction(previewPause, previewPaused && canResume ? '继续识别' : action, previewPaused && canResume ? 'play' : actionGlyph, true);
+      previewPause.disabled = previewPaused && !canResume;
+      setAction(previewClose, close, 'close', true);
+      homeCaption.root.hidden = false;
+      $('preview-hint').textContent = hint;
+      all('[data-preview]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.preview === currentPreview)));
+    }
+
+    function renderSelection() {
+      badge($('selection-status'), selection.enabled ? '监听已开启' : '监听已关闭', selection.enabled ? 'ok' : 'idle');
+      $('tray-selection').textContent = selection.enabled ? '已开启' : '已关闭';
+      $('selection-card-status').textContent = selection.enabled ? '划词监听已开启' : '划词监听已关闭';
+      setAction($('selection-toggle'), selection.enabled ? '关闭划词监听' : '开启划词监听', 'select');
+      $('selection-toggle').setAttribute('aria-pressed', String(selection.enabled));
+      selectionCaption.root.hidden = selection.phase === 'idle';
+      const labels = { running: '· 正在翻译', done: '· 翻译完成', stopped: '· 已停止' };
+      labelCaption(selectionCaption, '选区译文', 'select', labels[selection.phase]);
+      selectionCaption.content.textContent = selection.text || (selection.phase === 'stopped' ? '已停止生成' : '');
+      selectionCopy.disabled = !selection.text;
+      selectionStop.disabled = selection.phase !== 'running';
+    }
+
+    function closeSelection() {
+      clearInterval(selection.timer);
+      selection.phase = 'idle';
+      selection.text = '';
+      $('selection-text').classList.remove('example-selected');
+      renderSelection();
+    }
+
+    function translateSelection(text = selectionTranslations[0], highlight = true) {
+      if (!ensureModel()) return;
+      closeSelection();
+      $('selection-text').classList.toggle('example-selected', highlight);
+      selection.phase = 'running';
+      let length = 0;
+      renderSelection();
+      selectionCaption.resetPosition();
+      selection.timer = setInterval(() => {
+        length += 1;
+        selection.text = text.slice(0, length);
+        if (length >= text.length) {
+          clearInterval(selection.timer);
+          selection.phase = 'done';
+          if (currentPage === 'selection') $('announcement').textContent = `翻译完成。${text}`;
+        }
+        renderSelection();
+      }, 95);
+    }
+
+    function toggleSelection() {
+      selection.enabled = !selection.enabled;
+      if (!selection.enabled) closeSelection();
+      renderSelection();
+      notify(selection.enabled ? '已开启选区翻译监听' : '已关闭选区翻译监听');
+    }
+
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const clamp = (value, low, high) => Math.min(Math.max(low, high), Math.max(low, value));
+
+    function renderOcr() {
+      const states = {
+        idle: ['未开始', 'idle', '点击开始框选，或使用示例选区。'],
+        picking: ['正在框选', 'active', '在演示区拖动鼠标，按 Esc 取消。'],
+        running: ['正在监测', 'ok', '拖动选区或右下角可调整范围。'],
+        paused: ['已暂停', 'pause', '选区与译文已保留，可继续识别。']
+      };
+      const [label, tone, hint] = states[ocr.phase];
+      badge($('ocr-status'), label, tone);
+      $('ocr-hint').textContent = hint;
+      $('ocr-original').textContent = ocrSamples[ocr.sample][0];
+      const monitored = ocr.phase === 'running' || ocr.phase === 'paused';
+      const paused = ocr.phase === 'paused';
+      $('ocr-change').disabled = ocr.phase === 'picking';
+      $('ocr-pick').disabled = ocr.phase === 'picking';
+      $('tray-ocr').textContent = monitored ? '结束持续 OCR' : '开始持续 OCR';
+      $('tray-ocr-pause').hidden = !monitored;
+      $('tray-ocr-pause-label').textContent = paused ? '继续识别' : '暂停识别';
+      $('tray-ocr-pause').firstElementChild.replaceChildren(icon(paused ? 'play' : 'pause'));
+      $('region-label').textContent = paused ? '已暂停' : '监测区域';
+      const regionPause = $('region-tools').querySelector('[data-act="ocr-pause"]');
+      [regionPause, ocrPause].forEach((button) => setAction(button, paused ? '继续识别' : '暂停识别', paused ? 'play' : 'pause', true));
+      $('region').dataset.paused = String(paused);
+      ocrCaption.root.hidden = !monitored;
+      labelCaption(ocrCaption, '持续 OCR', 'scan', `· ${label}`);
+      ocrCaption.content.textContent = ocr.text;
+      ocrCopy.disabled = !ocr.text;
+      renderRegion();
+    }
+
+    function renderRegion() {
+      const picking = ocr.phase === 'picking';
+      const layer = $('crop-layer');
+      layer.hidden = !picking && !ocr.rect;
+      layer.dataset.picking = String(picking);
+      layer.style.pointerEvents = picking ? 'auto' : 'none';
+      const region = $('region');
+      region.hidden = !ocr.rect;
+      region.tabIndex = picking ? -1 : 0;
+      region.style.pointerEvents = picking ? 'none' : 'auto';
+      $('region-tools').hidden = picking;
+      region.querySelector('.region-handle').hidden = picking;
+      if (!ocr.rect) return;
+      if (!picking && layer.clientWidth && layer.clientHeight) ocr.rect = fitRect(ocr.rect);
+      const { x, y, w, h } = ocr.rect;
+      Object.assign(region.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+    }
+
+    function startPick() {
+      if (!ensureModel()) return;
+      showPage('ocr');
+      ocr.priorPhase = ocr.phase;
+      ocr.priorRect = ocr.rect;
+      ocr.phase = 'picking';
+      ocr.rect = null;
+      renderOcr();
+    }
+
+    function cancelPick() {
+      ocr.phase = ocr.priorPhase;
+      ocr.rect = ocr.priorRect;
+      regionDrag = null;
+      renderOcr();
+    }
+
+    function sampleRegion() {
+      if (!ensureModel()) return;
+      showPage('ocr', currentPage !== 'ocr');
+      const width = $('screen-stage').clientWidth;
+      startOcr({ x: 26, y: 55, w: Math.min(width - 54, 400), h: 89 });
+      $('region').focus({ preventScroll: true });
+    }
+
+    function startOcr(rect) {
+      ocr.rect = fitRect(rect);
+      ocr.phase = 'running';
+      ocr.text = ocrSamples[ocr.sample][1];
+      renderOcr();
+      ocrCaption.resetPosition();
+    }
+
+    function toggleOcrPause() {
+      if (ocr.phase !== 'running' && ocr.phase !== 'paused') return;
+      if (ocr.phase === 'paused' && !ensureModel()) return;
+      ocr.phase = ocr.phase === 'paused' ? 'running' : 'paused';
+      if (ocr.phase === 'running') ocr.text = ocrSamples[ocr.sample][1];
+      renderOcr();
+      notify(ocr.phase === 'running' ? '已继续识别' : '已暂停，保留当前译文');
+    }
+
+    function endOcr() {
+      ocr.phase = 'idle';
+      ocr.rect = null;
+      ocr.text = '';
+      regionDrag = null;
+      renderOcr();
+    }
+
+    function fitRect(rect, resize = false) {
+      const stage = $('screen-stage');
+      if (!stage.clientWidth || !stage.clientHeight) return rect;
+      const edge = 8;
+      const top = 36;
+      const right = stage.clientWidth - edge;
+      const bottom = stage.clientHeight - edge;
+      const w = clamp(rect.w, 58, right - (resize ? rect.x : edge));
+      const h = clamp(rect.h, 36, bottom - (resize ? rect.y : top));
+      return { x: clamp(rect.x, edge, right - w), y: clamp(rect.y, top, bottom - h), w, h };
+    }
+
+    function pointerPosition(event) {
+      const { left, top } = $('crop-layer').getBoundingClientRect();
+      return {
+        x: clamp(event.clientX - left, 8, $('crop-layer').clientWidth - 8),
+        y: clamp(event.clientY - top, 36, $('crop-layer').clientHeight - 8)
+      };
+    }
+
+    function handleRegionDown(event) {
+      if (event.button !== 0 || event.target.closest('.region-tools')) return;
+      const picking = ocr.phase === 'picking';
+      if (!picking && !event.target.closest('.region')) return;
+      const kind = picking ? 'new' : event.target.closest('.region-handle') ? 'resize' : 'move';
+      const point = pointerPosition(event);
+      regionDrag = { kind, point, rect: ocr.rect };
+      $('crop-layer').setPointerCapture(event.pointerId);
+      if (picking) ocr.rect = { ...point, w: 0, h: 0 };
+      else $('region').focus({ preventScroll: true });
+    }
+
+    function handleRegionMove(event) {
+      if (!regionDrag) return;
+      const { point, kind, rect } = regionDrag;
+      const target = pointerPosition(event);
+      const dx = target.x - point.x;
+      const dy = target.y - point.y;
+      if (kind === 'new') {
+        ocr.rect = { x: Math.min(point.x, target.x), y: Math.min(point.y, target.y), w: Math.abs(dx), h: Math.abs(dy) };
+      } else if (kind === 'move') {
+        ocr.rect = fitRect({ ...rect, x: rect.x + dx, y: rect.y + dy });
+      } else {
+        ocr.rect = fitRect({ ...rect, w: rect.w + dx, h: rect.h + dy }, true);
+      }
+      renderRegion();
+    }
+
+    function handleRegionUp() {
+      if (!regionDrag) return;
+      const { kind } = regionDrag;
+      regionDrag = null;
+      if (kind !== 'new') return;
+      if (ocr.rect.w < 58 || ocr.rect.h < 36) {
+        ocr.rect = null;
+        renderRegion();
+        notify('请拖出更大的选区，至少 58 × 36 像素。');
+        return;
+      }
+      startOcr(ocr.rect);
+      $('region').focus({ preventScroll: true });
+    }
+
+    function renderSources() {
+      const list = $('source-list');
+      list.replaceChildren();
+      if ($('empty-sources').checked) {
+        const empty = document.createElement('p');
+        empty.textContent = '暂无可选程序。开始播放音频后可刷新列表。';
+        list.append(empty);
+        return;
+      }
+      demoSources.forEach(({ name, active }) => {
+        const button = actionButton(name, 'window', 'audio-source', 'source-option');
+        button.removeAttribute('aria-label');
+        button.dataset.source = name;
+        const status = document.createElement('span');
+        status.className = 'status';
+        badge(status, active ? '正在播放' : '空闲', active ? 'ok' : 'idle');
+        button.append(status);
+        if (audio.source === name) {
+          button.setAttribute('aria-current', 'true');
+          button.append(icon('check'));
+        }
+        list.append(button);
+      });
+    }
+
+    function audioLines() {
+      return transcript.slice(0, audio.count).map((line, index) => {
+        if (index === 1 && audio.count === 2 && ['streaming', 'stopped'].includes(audio.phase)) {
+          return { ...line, zh: '我们聊聊春天的第一场…' };
+        }
+        return line;
+      });
+    }
+
+    function writeAudioLines(container, lines, preferences) {
+      container.classList.add('audio-history');
+      container.replaceChildren(...lines.map((line) => {
+        const row = document.createElement('p');
+        if (preferences.speakers && line.speaker) {
+          const speaker = document.createElement('span');
+          speaker.className = 'speaker';
+          speaker.textContent = line.speaker;
+          row.append(speaker);
+        }
+        if (preferences.bilingual) {
+          const original = document.createElement('span');
+          original.className = 'audio-original';
+          original.lang = 'en';
+          original.textContent = line.en;
+          row.append(original);
+        }
+        row.append(document.createTextNode(line.zh));
+        return row;
+      }));
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function renderAudio() {
+      const states = {
+        idle: ['未开始', 'idle'], waiting: ['等待语音', 'pause'], streaming: ['正在转写', 'active'],
+        revised: ['段落已修订', 'ok'], stopped: ['已停止', 'idle']
+      };
+      const [label, tone] = states[audio.phase];
+      const running = isAudioRunning();
+      badge($('audio-status'), label, tone);
+      $('audio-source-label').textContent = audio.source ? `${audio.source} · 音频示例` : '等待选择程序';
+      $('tray-audio').textContent = running ? '停止音频字幕' : '开始音频字幕';
+      setAction($('audio-toggle-button'), running ? '停止字幕' : '开始字幕', running ? 'stop' : 'play');
+      audioCaption.root.hidden = !audio.shown;
+      labelCaption(audioCaption, audio.source || '音频字幕', 'audio', `· ${label}`);
+      audioCopy.disabled = audio.count === 0;
+      audioStop.disabled = !running;
+      writeAudioLines(audioCaption.content, audioLines(), settings);
+      if (!audio.count) {
+        audioCaption.content.textContent = running ? '等待语音…' : '没有已转写的字幕';
+        audioCaption.content.classList.remove('audio-history');
+      }
+    }
+
+    function isAudioRunning() { return ['waiting', 'streaming', 'revised'].includes(audio.phase); }
+
+    function startAudio(source, openPage = true) {
+      if (!ensureModel()) return;
+      if (openPage) showPage('audio', currentPage !== 'audio');
+      clearTimeout(audio.timer);
+      audio.source = source;
+      audio.phase = 'waiting';
+      audio.count = 0;
+      audio.shown = true;
+      renderAudio();
+      if (currentPage === 'audio') audioCaption.resetPosition();
+      const steps = [ ['streaming', 1, 900], ['streaming', 2, 1200], ['revised', 3, 1500] ];
+      function next(index) {
+        if (index === steps.length) return;
+        const [phase, count, time] = steps[index];
+        audio.timer = setTimeout(() => {
+          audio.phase = phase;
+          audio.count = count;
+          renderAudio();
+          next(index + 1);
+        }, time);
+      }
+      if (demoSources.find((entry) => entry.name === source)?.active) next(0);
+    }
+
+    function stopAudio(close = false) {
+      clearTimeout(audio.timer);
+      audio.phase = close ? 'idle' : 'stopped';
+      if (close) {
+        audio.shown = false;
+        audio.count = 0;
+      }
+      renderAudio();
+    }
+
+    function chooseSource(trigger) {
+      showPage('audio', currentPage !== 'audio');
+      renderSources();
+      openDialog('source-dialog', trigger?.isConnected && !$('tray').contains(trigger) ? trigger : $('audio-source-button'));
+    }
+
+    function toggleAudio(trigger) {
+      if (isAudioRunning()) { stopAudio(); notify('已停止字幕，保留当前历史'); }
+      else if (audio.source) startAudio(audio.source);
+      else chooseSource(trigger);
+    }
+
+    const form = $('settings-form');
+    const field = (name) => form.elements.namedItem(name);
+
+    function readForm() {
+      return Object.fromEntries(Object.keys(defaults).map((key) => {
+        const control = field(key);
+        return [key, control.type === 'checkbox' ? control.checked : control.value];
+      }));
+    }
+
+    function fillForm() {
+      Object.keys(defaults).forEach((key) => {
+        const control = field(key);
+        if (control.type === 'checkbox') control.checked = settings[key];
+        else control.value = settings[key];
+        control.removeAttribute('aria-invalid');
+        control.removeAttribute('aria-describedby');
+      });
+    }
+
+    function setSettingsMessage(text, error = false) {
+      $('settings-message').textContent = text;
+      $('settings-message').dataset.error = String(error);
+    }
+
+    function renderForm() {
+      const values = readForm();
+      const dirty = Object.keys(defaults).some((key) => values[key] !== settings[key]);
+      $('save-settings').disabled = $('discard-settings').disabled = !dirty;
+      labelCaption(settingsCaption, '字幕预览', 'audio');
+      settingsCaption.root.style.setProperty('--caption-size', `${clamp(Number(values.font) || 22, 14, 44)}px`);
+      writeAudioLines(settingsCaption.content, [transcript[0]], values);
+      return dirty;
+    }
+
+    function applySettings() {
+      $('main').style.setProperty('--caption-size', `${settings.font}px`);
+      $('audio-stage').style.setProperty('--audio-bottom', `${clamp(Number(settings.bottom) * .375, 6, 90)}px`);
+      all('[data-shortcut]').forEach((container) => {
+        const gesture = settings[`${container.dataset.shortcut}Key`];
+        const keys = gesture.split('+').map((part) => {
+          const key = document.createElement('kbd');
+          key.textContent = part.trim();
+          return key;
+        });
+        container.replaceChildren(...keys.flatMap((key, index) => index ? [' ', key] : [key]));
+      });
+      renderRuntime();
+      renderAudio();
+    }
+
+    const modifiers = ['Ctrl', 'Alt', 'Shift', 'Win'];
+    function normalizeShortcut(gesture) {
+      const parts = gesture.trim().toUpperCase().split('+').map((part) => part.trim());
+      const key = parts.pop();
+      const ordered = modifiers.filter((modifier) => parts.includes(modifier.toUpperCase()));
+      if (!/^(?:[A-Z0-9]|F[1-9]|F1[0-2])$/.test(key) || !parts.length || ordered.length !== parts.length) return '';
+      return [...ordered, key].join(' + ');
+    }
+
+    function saveSettings(event) {
+      event.preventDefault();
+      const values = readForm();
+      values.modelDirectory = values.modelDirectory.trim();
+      values.asrDirectory = values.asrDirectory.trim();
+      const windowsPath = /^(?:[A-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)/i;
+      values.ocrKey = normalizeShortcut(values.ocrKey);
+      values.audioKey = normalizeShortcut(values.audioKey);
+      const errors = [
+        ['modelDirectory', !windowsPath.test(values.modelDirectory), '请输入模型目录的完整 Windows 路径。'],
+        ['font', !field('font').validity.valid, '浮窗字号须为 14 至 44 的整数。'],
+        ['bottom', !field('bottom').validity.valid, '字幕底部间距须在 16 至 240 之间，以 4 为步长。'],
+        ['asrDirectory', values.asrDirectory && !windowsPath.test(values.asrDirectory), '请输入完整转写目录，或留空使用默认目录。'],
+        ['ocrKey', !values.ocrKey, '请为持续 OCR 输入有效快捷键。'],
+        ['audioKey', !values.audioKey, '请为音频字幕输入有效快捷键。'],
+        ['audioKey', values.ocrKey === values.audioKey, '两个快捷键不能重复。']
+      ];
+      const failure = errors.find(([, invalid]) => invalid);
+      if (failure) {
+        const [name, , message] = failure;
+        field(name).setAttribute('aria-invalid', 'true');
+        field(name).setAttribute('aria-describedby', 'settings-message');
+        field(name).focus();
+        setSettingsMessage(message, true);
+        return;
+      }
+      const restartKeys = ['modelDirectory', 'model', 'gpu', 'fallback', 'language', 'asr', 'asrDirectory', 'speakers'];
+      const restartAudio = isAudioRunning() && restartKeys.some((key) => settings[key] !== values[key]);
+      if (['modelDirectory', 'model', 'gpu', 'fallback'].some((key) => settings[key] !== values[key])) modelReleased = false;
+      settings = values;
+      let stored = true;
+      try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
+      catch { stored = false; }
+      fillForm();
+      renderForm();
+      if (!settings.model) { closeSelection(); endOcr(); stopAudio(true); }
+      else if (restartAudio) startAudio(audio.source, false);
+      applySettings();
+      setSettingsMessage(stored ? '原型设置已保存' : '仅在本次打开期间应用设置');
+      notify(stored ? '原型设置已保存' : '设置已在本次会话中应用');
+    }
+
+    function exitDemo() {
+      $('exit-dialog').close();
+      closeSelection();
+      endOcr();
+      audio.source = '';
+      stopAudio(true);
+      exited = true;
+      $('shell').hidden = true;
+      $('tray-wrap').hidden = true;
+      $('restore').hidden = false;
+      $('restore').querySelector('h1').focus();
+      renderRuntime();
+    }
+
+    function restoreDemo() {
+      exited = false;
+      $('restore').hidden = true;
+      $('shell').hidden = false;
+      $('tray-wrap').hidden = false;
+      renderRuntime();
+      showPage('home');
+    }
+
+    const actions = {
+      'selection-toggle': toggleSelection,
+      'selection-demo': () => { showPage('selection'); translateSelection(); },
+      'translate': () => translateSelection(),
+      'selection-copy': (button) => copyText(selection.text, button),
+      'selection-stop': () => {
+        clearInterval(selection.timer);
+        selection.phase = 'stopped';
+        renderSelection();
+        (selection.text ? selectionCopy : document.querySelector('[data-act="translate"]')).focus();
+      },
+      'selection-close': () => { closeSelection(); document.querySelector('[data-act="translate"]').focus(); },
+      'ocr-pick': startPick,
+      'ocr-sample': sampleRegion,
+      'ocr-toggle': () => {
+        if (ocr.rect && ocr.phase !== 'picking') { endOcr(); notify('已结束持续 OCR'); }
+        else if (ocr.phase === 'picking') cancelPick();
+        else startPick();
+      },
+      'ocr-pause': toggleOcrPause,
+      'ocr-end': () => { endOcr(); $('ocr-pick').focus(); },
+      'ocr-copy': (button) => copyText(ocr.text, button),
+      'ocr-change': () => {
+        ocr.sample = (ocr.sample + 1) % ocrSamples.length;
+        if (ocr.phase === 'running') ocr.text = ocrSamples[ocr.sample][1];
+        renderOcr();
+      },
+      'sources': chooseSource,
+      'audio-toggle': toggleAudio,
+      'audio-source': (button) => { $('source-dialog').close(); startAudio(button.dataset.source); },
+      'audio-stop': () => { stopAudio(); (audio.count ? audioCopy : $('audio-toggle-button')).focus(); },
+      'audio-close': () => { stopAudio(true); $('audio-source-button').focus(); },
+      'audio-copy': (button) => copyText(audioLines().map((line) => line.zh).join('\n'), button),
+      'source-refresh': () => { renderSources(); notify($('empty-sources').checked ? '暂无可选程序' : '已刷新音频程序'); },
+      'preview-jump': () => jumpTo('preview-title'),
+      'preview-pause': () => {
+        previewPaused = !previewPaused;
+        renderPreview();
+        if (previewPause.disabled) previewCopy.focus();
+      },
+      'preview-copy': (button) => copyText(homeCaption.content.textContent, button),
+      'preview-close': () => {
+        homeCaption.root.hidden = true;
+        $('preview-hint').textContent = '已收起浮窗，点击任一场景重新预览。';
+        document.querySelector(`[data-preview="${currentPreview}"]`).focus();
+      },
+      'browse': (button) => openDialog('folder-dialog', button),
+      'dialog-close': (button) => button.closest('dialog').close(),
+      'discard': () => { fillForm(); renderForm(); setSettingsMessage('已撤销未保存的修改'); },
+      'release': () => { if (settings.model) { modelReleased = true; renderRuntime(); } notify(settings.model ? '示例模型已释放' : '尚未选择模型'); },
+      'exit': (button) => openDialog('exit-dialog', button),
+      'exit-confirm': exitDemo
+    };
+
+    all('[data-icon]').forEach((element) => element.append(icon(element.dataset.icon)));
+    all('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
+      if (dialogTrigger?.getClientRects().length) dialogTrigger.focus({ preventScroll: true });
+      dialogTrigger = null;
+    }));
+    $('tray-button').addEventListener('click', toggleTray);
+    $('empty-sources').addEventListener('change', renderSources);
+    $('crop-layer').addEventListener('pointerdown', handleRegionDown);
+    $('crop-layer').addEventListener('pointermove', handleRegionMove);
+    $('crop-layer').addEventListener('pointerup', handleRegionUp);
+    $('crop-layer').addEventListener('pointercancel', () => {
+      if (regionDrag && ocr.phase === 'picking') { ocr.rect = null; renderRegion(); }
+      regionDrag = null;
+    });
+    $('region').addEventListener('keydown', (event) => {
+      const delta = arrows[event.key];
+      if (!delta || event.target !== $('region') || !ocr.rect) return;
+      event.preventDefault();
+      const { x, y, w, h } = ocr.rect;
+      ocr.rect = event.shiftKey
+        ? fitRect({ x, y, w: w + delta[0] * 8, h: h + delta[1] * 8 }, true)
+        : fitRect({ x: x + delta[0] * 8, y: y + delta[1] * 8, w, h });
+      renderRegion();
+    });
+    $('selection-stage').addEventListener('pointerup', (event) => {
+      if (!selection.enabled || currentPage !== 'selection' || !event.target.closest('.article')) return;
+      const selected = window.getSelection();
+      const index = all('.article p', $('selection-stage')).findIndex((paragraph) => (
+        paragraph.contains(selected.anchorNode) && paragraph.contains(selected.focusNode)
+      ));
+      if (index >= 0 && selected.toString().trim().length > 2) translateSelection(selectionTranslations[index], false);
+    });
+    form.addEventListener('input', (event) => {
+      event.target.removeAttribute('aria-invalid');
+      event.target.removeAttribute('aria-describedby');
+      setSettingsMessage(renderForm() ? '有未保存的修改' : '修改仅保存到此原型');
+    });
+    form.addEventListener('submit', saveSettings);
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      if (!$('tray-wrap').contains(event.target)) closeTray();
+      if (!button || button.disabled) return;
+      const { act, page, focusGroup, preview, jump, folder } = button.dataset;
+      if (exited) {
+        if (act === 'restore' || page === 'home') restoreDemo();
+        return;
+      }
+      if (page) {
+        showPage(page);
+        if (focusGroup) jumpTo(focusGroup);
+      } else if (preview) {
+        currentPreview = preview;
+        previewPaused = false;
+        renderPreview();
+      } else if (jump) {
+        jumpTo(jump);
+      } else if (folder) {
+        field('modelDirectory').value = folder;
+        field('modelDirectory').dispatchEvent(new Event('input', { bubbles: true }));
+        $('folder-dialog').close();
+      } else if (act) {
+        if ($('tray').contains(button) && !['sources', 'exit', 'audio-toggle'].includes(act)) closeTray(true);
+        actions[act]?.(button);
+        if ($('tray').contains(button) && act === 'audio-toggle') closeTray(true);
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (document.querySelector('dialog[open]') || exited) return;
+      if (event.key === 'Escape' && !$('tray').hidden) { closeTray(true); return; }
+      if (event.key === 'Escape' && ocr.phase === 'picking') {
+        cancelPick();
+        $('ocr-pick').focus();
+        return;
+      }
+      if (event.repeat || event.target.matches('input, select, textarea')) return;
+      const keys = [event.ctrlKey, event.altKey, event.shiftKey, event.metaKey];
+      if (!keys.some(Boolean)) return;
+      const gesture = [...modifiers.filter((name, index) => keys[index]), event.key.toUpperCase()].join(' + ');
+      if (gesture === settings.ocrKey) {
+        event.preventDefault();
+        actions['ocr-toggle']();
+      } else if (gesture === settings.audioKey) {
+        event.preventDefault();
+        toggleAudio($('audio-source-button'));
+      }
+    });
+
+    window.addEventListener('resize', renderRegion);
+    const glyphs = [
+      ['avatar', '托盘标识'], ['home', '工作台'], ['select', '选区翻译'], ['scan', '持续 OCR'],
+      ['audio', '音频字幕'], ['gear', '设置'], ['doc', '设计说明'], ['chip', '本地模型'],
+      ['tray', '托盘菜单'], ['window', '浮窗'], ['copy', '复制'], ['check', '已复制'],
+      ['stop', '停止'], ['pause', '暂停'], ['play', '继续'], ['close', '关闭 / 结束'],
+      ['folder', '目录'], ['type', '显示'], ['key', '快捷键'], ['info', '提示'], ['refresh', '刷新'],
+      ['arrow', '前往'], ['diagonal', '打开工具'], ['chevron', '展开'], ['eye', '预览'],
+      ['grip', '拖动区'], ['exit', '退出'], ['sparkles', '快捷工具']
+    ];
+    glyphs.forEach(([name, label]) => {
+      const card = document.createElement('div');
+      const illustration = name === 'avatar' ? document.createElement('img') : icon(name);
+      if (name === 'avatar') {
+        illustration.src = document.querySelector('.brand-icon').src;
+        illustration.alt = '';
+      }
+      const text = document.createElement('small');
+      text.textContent = label;
+      card.append(illustration, text);
+      $('icon-grid').append(card);
+    });
+    enableCaptionDrag(selectionCaption);
+    enableCaptionDrag(ocrCaption, true);
+    enableCaptionDrag(audioCaption, true);
+    fillForm();
+    renderForm();
+    applySettings();
+    renderPreview();
+    renderSelection();
+    renderOcr();
+  </script>
+</body>
+</html>

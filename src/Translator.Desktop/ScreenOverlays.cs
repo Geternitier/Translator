@@ -18,8 +18,8 @@ internal sealed class ScreenPicker : Window
     private readonly Canvas canvas = new() { Background = Brushes.Transparent };
     private readonly Border outline = new()
     {
-        BorderBrush = new SolidColorBrush(Color.Parse("#83D5B8")), BorderThickness = new Thickness(2),
-        Background = new SolidColorBrush(Color.FromArgb(24, 131, 213, 184)), IsHitTestVisible = false, IsVisible = false
+        BorderBrush = SakuraVisuals.Frame, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(4),
+        Background = Brush.Parse("#28E765A5"), IsHitTestVisible = false, IsVisible = false
     };
     private readonly ScreenRegion displayRegion;
     private readonly WriteableBitmap snapshot;
@@ -41,15 +41,13 @@ internal sealed class ScreenPicker : Window
 
         var grid = new Grid();
         grid.Children.Add(new Image { Source = snapshot, Stretch = Stretch.Fill, IsHitTestVisible = false });
-        grid.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(85, 0, 0, 0)), IsHitTestVisible = false });
+        grid.Children.Add(new Border { Background = Brush.Parse("#6033243E"), IsHitTestVisible = false });
         grid.Children.Add(canvas);
         canvas.Cursor = new Cursor(StandardCursorType.Cross);
         canvas.Children.Add(outline);
-        var instructions = new Border
-        {
-            Padding = new Thickness(14, 8), CornerRadius = new CornerRadius(7), Background = Brushes.Black,
-            IsHitTestVisible = false, Child = new TextBlock { Text = "拖动创建持续翻译框 · Esc 取消", Foreground = Brushes.White }
-        };
+        var instructions = SakuraVisuals.CaptionSurface(
+            SakuraVisuals.Label(SakuraGlyph.Scan, "拖动框选屏幕 · Esc 取消", SakuraVisuals.CaptionSecondary));
+        instructions.IsHitTestVisible = false;
         Canvas.SetLeft(instructions, 18);
         Canvas.SetTop(instructions, 18);
         canvas.Children.Add(instructions);
@@ -147,6 +145,11 @@ internal static class OverlayGeometry
         var center = new PixelPoint(display.X + display.Width / 2, display.Y + display.Height / 2);
         PixelRect area = window.Screens?.ScreenFromPoint(center)?.WorkingArea
             ?? new PixelRect(display.X, display.Y, display.Width, display.Height);
+        return KeepVisible(area, point, width, height);
+    }
+
+    public static PixelPoint KeepVisible(PixelRect area, PixelPoint point, int width, int height)
+    {
         const int margin = 6;
         int left = area.X + margin, top = area.Y + margin;
         return new PixelPoint(
@@ -158,6 +161,7 @@ internal static class OverlayGeometry
 internal class FloatingOverlay : Window
 {
     private bool clickThrough;
+    private bool keyboardInput;
 
     public FloatingOverlay(bool clickThrough = true)
     {
@@ -171,6 +175,12 @@ internal class FloatingOverlay : Window
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         Background = Brushes.Transparent;
         Opened += (_, _) => ApplyInputStyle();
+        Deactivated += (_, _) =>
+        {
+            if (!keyboardInput) return;
+            keyboardInput = false;
+            ApplyInputStyle();
+        };
     }
 
     public void SetClickThrough(bool value)
@@ -180,18 +190,51 @@ internal class FloatingOverlay : Window
         ApplyInputStyle();
     }
 
-    private void ApplyInputStyle() =>
-        WindowsScreenCapture.StyleOverlay(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, clickThrough, noActivate: true);
+    public void FocusTools(Control target)
+    {
+        if (clickThrough) return;
+        keyboardInput = true;
+        ApplyInputStyle();
+        Activate();
+        target.Focus();
+    }
+
+    public void EnableKeyboardMovement(Control header, Action<PixelPoint>? moved = null, Func<bool>? canMove = null)
+    {
+        header.KeyDown += (_, args) =>
+        {
+            if (!keyboardInput || args.KeyModifiers != KeyModifiers.None || canMove?.Invoke() == false) return;
+            int step = (int)Math.Ceiling(8 * RenderScaling);
+            (int dx, int dy) = args.Key switch
+            {
+                Key.Left => (-step, 0), Key.Right => (step, 0), Key.Up => (0, -step), Key.Down => (0, step), _ => (0, 0)
+            };
+            if (dx == 0 && dy == 0) return;
+            var target = new PixelPoint(Position.X + dx, Position.Y + dy);
+            if (Screens.ScreenFromWindow(this)?.WorkingArea is { } area)
+                target = OverlayGeometry.KeepVisible(area, target, (int)Math.Ceiling(ClientSize.Width * RenderScaling),
+                    (int)Math.Ceiling(ClientSize.Height * RenderScaling));
+            Position = target;
+            moved?.Invoke(target);
+            args.Handled = true;
+        };
+    }
+
+    private void ApplyInputStyle()
+    {
+        if (OperatingSystem.IsWindows())
+            WindowsScreenCapture.StyleOverlay(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, clickThrough, noActivate: !keyboardInput);
+    }
 }
 
-internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : IDisposable
+internal sealed class CaptionOverlay(SakuraGlyph glyph, string title, Action<OverlayPosition>? moved = null) : IDisposable
 {
-    internal static readonly IBrush Surface = new SolidColorBrush(Color.FromArgb(236, 17, 30, 30));
     private FloatingOverlay? window;
     private TextBlock? label;
+    private TextBlock? statusLabel;
     private Border? panel;
     private CaptionActions? actions;
-    private (DesktopDisplay Display, ScreenRegion? Anchor, int BottomOffset, OverlayPosition? SavedPosition) layout;
+    private (DesktopDisplay Display, ScreenRegion Anchor, OverlayPosition? SavedPosition) layout;
     private int fontSize = AppSettings.DefaultSubtitleFontSize;
     private bool draggable;
     private DispatcherTimer? timer;
@@ -201,10 +244,11 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
     private PixelPoint firstPosition;
     private bool dragMoved;
 
-    public void Show(string text, DesktopDisplay display, ScreenRegion? anchor = null,
-        int bottomOffset = 64, TimeSpan? duration = null, bool copyable = false, Action? close = null,
+    public void Show(string text, DesktopDisplay display, ScreenRegion anchor,
+        TimeSpan? duration = null, bool copyable = false, Action? close = null,
         bool draggable = false, bool keepDraggedPosition = false, OverlayPosition? savedPosition = null,
-        Action? stop = null)
+        Action? stop = null, string status = "", SakuraGlyph primaryGlyph = SakuraGlyph.Stop,
+        string primaryLabel = "停止生成", string closeLabel = "关闭译文")
     {
         if (string.IsNullOrWhiteSpace(text)) { Clear(); return; }
 
@@ -220,13 +264,12 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
         TextBlock caption = label!;
         Border surface = panel!;
         caption.Text = text;
-        caption.TextAlignment = anchor is null ? TextAlignment.Center : TextAlignment.Left;
+        SetStatus(status);
         this.draggable = draggable;
-        surface.Cursor = draggable ? new Cursor(StandardCursorType.SizeAll) : null;
         bool interactive = copyable || close is not null || stop is not null;
-        actions!.SetActions(interactive, copyable ? GetCopyText : null, stop, close);
+        actions!.SetActions(copyable ? GetCopyText : null, stop, close, primaryGlyph, primaryLabel, closeLabel);
         window.SetClickThrough(!interactive && !draggable);
-        layout = (display, anchor, bottomOffset, savedPosition);
+        layout = (display, anchor, savedPosition);
         LayoutCaption(window, surface);
         if (!window.IsVisible) window.Show();
 
@@ -235,7 +278,7 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
             timer = new DispatcherTimer { Interval = delay };
             timer.Tick += (_, _) =>
             {
-                if (dragPointer is null && !actions.IsEngaged && (!draggable || !surface.IsPointerOver)) Clear();
+                if (dragPointer is null && !surface.IsPointerOver && !window.IsActive) Clear();
             };
             timer.Start();
         }
@@ -252,11 +295,11 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
 
     private void LayoutCaption(FloatingOverlay overlay, Border surface)
     {
-        var (display, anchor, bottomOffset, savedPosition) = layout;
+        var (display, anchor, savedPosition) = layout;
         OverlayPosition? placement = draggable ? draggedPosition ?? savedPosition : null;
         if (placement is { } preferred) display = WindowsScreenCapture.DisplayAt(preferred.X, preferred.Y);
         double scale = OverlayGeometry.ScaleAt(overlay, display);
-        double widthLimit = Math.Min(anchor is null ? 920 : 520, display.Width / scale - 24);
+        double widthLimit = Math.Min(520, display.Width / scale - 24);
         surface.MaxWidth = widthLimit;
         surface.MaxHeight = display.Height / scale / 2;
         surface.Measure(new Size(widthLimit, surface.MaxHeight));
@@ -264,10 +307,9 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
 
         int width = (int)Math.Ceiling(surface.DesiredSize.Width * scale);
         int height = (int)Math.Ceiling(surface.DesiredSize.Height * scale);
-        int x = anchor is { } area ? area.X : (display.Width - width) / 2;
-        int y = anchor is { } selection ? selection.Y + selection.Height + 12 : display.Height - height - (int)(bottomOffset * scale);
-        if (anchor is { } region && y + height > display.Height - 8) y = region.Y - height - 12;
-        var target = placement is { } p ? new PixelPoint(p.X, p.Y) : new PixelPoint(display.X + x, display.Y + y);
+        int y = anchor.Y + anchor.Height + 12;
+        if (y + height > display.Height - 8) y = anchor.Y - height - 12;
+        var target = placement is { } p ? new PixelPoint(p.X, p.Y) : new PixelPoint(display.X + anchor.X, display.Y + y);
         overlay.Position = OverlayGeometry.KeepVisible(overlay, display, target, width, height);
     }
 
@@ -277,14 +319,29 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
     {
         var overlay = new FloatingOverlay { SizeToContent = SizeToContent.WidthAndHeight };
         label = new TextBlock { Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = fontSize };
-        panel = new Border
+        statusLabel = new TextBlock
         {
-            Background = Surface, CornerRadius = new CornerRadius(8), Padding = new Thickness(15, 9),
-            ClipToBounds = true, Child = label
+            Foreground = SakuraVisuals.CaptionSecondary, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        panel.PointerPressed += BeginDrag;
-        overlay.Content = panel;
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+        heading.Children.Add(SakuraVisuals.Icon(SakuraGlyph.Grip, SakuraVisuals.CaptionSecondary, 14));
+        heading.Children.Add(SakuraVisuals.Icon(glyph, SakuraVisuals.CaptionSecondary, 15));
+        heading.Children.Add(statusLabel);
+        var dragArea = new Border { Child = heading, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.SizeAll) };
+        dragArea.PointerPressed += BeginDrag;
         actions = new CaptionActions(overlay);
+        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        DockPanel.SetDock(actions.View, Dock.Right);
+        header.Children.Add(actions.View);
+        header.Children.Add(dragArea);
+        overlay.EnableKeyboardMovement(header, position =>
+        {
+            draggedPosition = new OverlayPosition(position.X, position.Y);
+            moved?.Invoke(draggedPosition);
+        }, () => draggable);
+        panel = SakuraVisuals.CaptionSurface(new StackPanel { Children = { header, label } });
+        overlay.Content = panel;
         overlay.PointerMoved += MoveDrag;
         overlay.PointerReleased += (_, args) =>
         {
@@ -339,13 +396,31 @@ internal sealed class CaptionOverlay(Action<OverlayPosition>? moved = null) : ID
     {
         timer?.Stop();
         timer = null;
-        actions?.Hide();
+        actions?.ResetCopy();
         FinishDrag();
         draggedPosition = null;
         window?.Hide();
     }
 
-    public void MarkStopped() => actions?.MarkStopped();
+    public void SetPrimary(Action action, SakuraGlyph glyph, string label, string status)
+    {
+        SetStatus(status);
+        actions?.SetPrimary(action, glyph, label);
+        if (window?.IsVisible == true) LayoutCaption(window, panel!);
+    }
+
+    public void Reanchor(ScreenRegion anchor)
+    {
+        if (window?.IsVisible != true) return;
+        if (layout.Display.Id != anchor.DisplayId) layout.Display = WindowsScreenCapture.GetDisplay(anchor.DisplayId);
+        layout.Anchor = anchor;
+        LayoutCaption(window, panel!);
+    }
+
+    private void SetStatus(string value)
+    {
+        if (statusLabel is not null) statusLabel.Text = value.Length == 0 ? title : $"{title} · {value}";
+    }
 
     public void Dispose()
     {

@@ -7,6 +7,8 @@ using Translator.Platform.Windows;
 
 namespace Translator.Desktop;
 
+internal enum OcrMode { Idle, Selecting, Running, Paused, Adjusting }
+
 internal sealed class WindowsDesktopController : IAsyncDisposable
 {
     private readonly SettingsStore store = new();
@@ -19,13 +21,13 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     private readonly Func<AppSettings, ISpeakerDiarizer?> createSpeakerDiarizer;
     private readonly IOpticalCharacterRecognizer ocr;
     private readonly ITranslationService translator;
-    private readonly CaptionOverlay instantCaption = new();
+    private readonly CaptionOverlay instantCaption = new(SakuraGlyph.Selection, "选区译文");
     private readonly CaptionOverlay ocrCaption;
     private readonly DispatcherTimer placementTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private OverlayPositions placements;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Action<string> setTrayTooltip;
-    private readonly Action openTrayMenu;
+    private readonly Action chooseAudioSource;
     private readonly NativeMenuItem autoMenu;
     private readonly NativeMenuItem regionMenu;
     private readonly NativeMenuItem pauseOcrMenu;
@@ -50,14 +52,14 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     private bool shortcutRegistrationFailed;
     private int hotkeyRegistration;
 
-    public WindowsDesktopController(Action<string> setTrayTooltip, NativeMenu menu, Action openTrayMenu,
+    public WindowsDesktopController(Action<string> setTrayTooltip, NativeMenu menu, Action chooseAudioSource,
         IAudioSourceCatalog sources, IApplicationAudioCapture capture, Func<AppSettings, ISpeechTranscriber> createSpeechTranscriber,
         Func<AppSettings, ISpeakerDiarizer?> createSpeakerDiarizer,
         IOpticalCharacterRecognizer ocr, Func<Func<AppSettings>, Func<bool>, ITranslationService> createTranslationService)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         this.setTrayTooltip = setTrayTooltip;
-        this.openTrayMenu = openTrayMenu;
+        this.chooseAudioSource = chooseAudioSource;
         this.sources = sources;
         audioCapture = capture;
         this.createSpeechTranscriber = createSpeechTranscriber;
@@ -65,7 +67,7 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         this.ocr = ocr;
         selection = new WindowsSelectedTextSource(tuning.Llama.MaxInputCharacters);
         placements = store.LoadOverlayPositions();
-        ocrCaption = new CaptionOverlay(position => RememberPositions(placements with { Ocr = position }));
+        ocrCaption = new CaptionOverlay(SakuraGlyph.Scan, "持续 OCR", position => RememberPositions(placements with { Ocr = position }));
         placementTimer.Tick += (_, _) => SavePendingPositions();
         SettingsLoadResult loaded = store.Load();
         settings = loaded.Settings;
@@ -73,12 +75,13 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         translator = createTranslationService(() => Volatile.Read(ref settings),
             () => IsSelectionOrOcrActive() || Volatile.Read(ref audioRun) is not null);
 
-        autoMenu = TrayMenu.Add(menu, "选区翻译", ToggleAutoSelection);
-        regionMenu = TrayMenu.Add(menu, "持续 OCR", ToggleContinuousOcr);
-        pauseOcrMenu = TrayMenu.Add(menu, "暂停持续 OCR", ToggleOcrPause);
-        audioMenu = TrayMenu.Add(menu, "开始音频字幕", ToggleAudio);
-        menu.Items.Add(new NativeMenuItem("选择音频程序") { Menu = audioSources });
-        TrayMenu.Add(menu, "释放模型", ReleaseModel);
+        autoMenu = TrayMenu.Add(menu, "选区翻译", SakuraGlyph.Selection, ToggleAutoSelection);
+        autoMenu.ToggleType = MenuItemToggleType.CheckBox;
+        regionMenu = TrayMenu.Add(menu, "持续 OCR", SakuraGlyph.Scan, ToggleContinuousOcr);
+        pauseOcrMenu = TrayMenu.Add(menu, "暂停识别", SakuraGlyph.Pause, ToggleOcrPause);
+        audioMenu = TrayMenu.Add(menu, "开始音频字幕", SakuraGlyph.Audio, ToggleAudio);
+        TrayMenu.AddSubmenu(menu, "选择音频程序", SakuraGlyph.Window, audioSources);
+        TrayMenu.Add(menu, "释放模型", SakuraGlyph.Model, ReleaseModel);
         menu.Items.Add(new NativeMenuItemSeparator());
         ApplySettings(settings);
         if (loaded.Error is not null) feedback = loaded.Error;
@@ -90,6 +93,17 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
             RuntimePaths.Configuration.Error, feedback
         }.Concat(shortcutFeedback.Values)
         .Where(line => !string.IsNullOrEmpty(line)));
+
+    public AppSettings Settings => settings;
+    public bool HasOcrRegion => watchedRegion is not null;
+    public OcrMode OcrState => pickerOpen ? OcrMode.Selecting
+        : resumeAfterAdjustment is not null ? OcrMode.Adjusting
+        : ocrRun is not null ? OcrMode.Running : HasOcrRegion ? OcrMode.Paused : OcrMode.Idle;
+    public bool IsAudioRunning => audioRun is not null;
+    public AudioSource? LastAudioSource => selectedAudio;
+    public AudioSource? CurrentAudioSource => audioWindow is null ? null : selectedAudio;
+    public string AudioStatus => audioWindow?.State ?? "未开始";
+    public IReadOnlyList<AudioSource> ListAudioSources() => sources.ListSources();
 
     public void ApplySettings(AppSettings changed)
     {
@@ -201,7 +215,7 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         });
     }
 
-    private void ToggleAutoSelection()
+    public void ToggleAutoSelection()
     {
         var changed = settings with { AutoSelection = !settings.AutoSelection };
         try { store.Save(changed); ApplySettings(changed); }
@@ -251,23 +265,23 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         if (!TranslationText.NeedsTranslation(selected.Text)) { instantCaption.Clear(); return; }
         ScreenRegion anchor = selected.Region ?? CursorAnchor();
         string displayed = "";
-        ShowInstant("正在翻译…", anchor, close: DismissSelection, draggable: true, stop: Stop);
+        ShowInstant("正在翻译…", anchor, close: DismissSelection, draggable: true, stop: Stop, status: "正在翻译");
         string translated = await RenderTranslationAsync(selected.Text, TranslationSource.Selection, text =>
         {
             displayed = text;
             ShowInstant(text, anchor, copyable: true, close: DismissSelection, draggable: true,
-                keepDraggedPosition: true, stop: Stop);
+                keepDraggedPosition: true, stop: Stop, status: "正在翻译");
         }, token);
         token.ThrowIfCancellationRequested();
         ShowInstant(translated, anchor, TimeSpan.FromSeconds(Math.Clamp(translated.Length / 9.0, 5, 14)),
-            copyable: true, close: DismissSelection, draggable: true, keepDraggedPosition: true);
+            copyable: true, close: DismissSelection, draggable: true, keepDraggedPosition: true, status: "翻译完成");
 
         void Stop()
         {
             if (token.IsCancellationRequested) return;
             Cancel(ref instantRun);
             ShowInstant(displayed.Length == 0 ? "已停止翻译" : displayed, anchor, copyable: displayed.Length != 0,
-                close: DismissSelection, draggable: true, keepDraggedPosition: true);
+                close: DismissSelection, draggable: true, keepDraggedPosition: true, status: "已停止");
         }
     }
 
@@ -296,29 +310,34 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
 
     private void ToggleContinuousOcr()
     {
+        if (pickerOpen) return;
         if (watchedRegion is not null) StopOcr();
-        else Run(() => PickContinuousOcrAsync(lifetime.Token));
+        else PickOcrRegion();
     }
+
+    public void PickOcrRegion() => Run(() => PickContinuousOcrAsync(lifetime.Token));
 
     private async Task PickContinuousOcrAsync(CancellationToken token)
     {
-        if (pickerOpen) return;
+        if (OcrState is OcrMode.Selecting or OcrMode.Adjusting || disposed) return;
         pickerOpen = true;
+        RefreshMenu();
         instantCaption.Clear();
         ScreenRegion? picked;
         try { picked = await ScreenPicker.PickAsync(screen, token); }
-        finally { pickerOpen = false; }
+        finally { pickerOpen = false; RefreshMenu(); }
         if (picked is { } region && !token.IsCancellationRequested) StartOcr(region);
     }
 
-    private void StartOcr(ScreenRegion region)
+    private void StartOcr(ScreenRegion region, bool keepCaption = false)
     {
         Cancel(ref ocrRun);
         watchedRegion = region;
         resumeAfterAdjustment = null;
         var run = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         ocrRun = run;
-        ocrCaption.Clear();
+        if (keepCaption) ocrCaption.SetPrimary(PauseOcr, SakuraGlyph.Pause, "暂停识别", "正在监测");
+        else ocrCaption.Clear();
         ShowOcrFrame();
         RefreshMenu();
         PrepareModel();
@@ -347,7 +366,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
                         if (!request.IsCancellationRequested && version == newest && !pickerOpen)
                             ocrCaption.Show(translated, display, region, copyable: true, close: StopOcr,
                                 draggable: true, keepDraggedPosition: true, savedPosition: placements.Ocr,
-                                stop: () => PauseOcr(keepCaption: true));
+                                stop: PauseOcr, status: "正在监测", primaryGlyph: SakuraGlyph.Pause,
+                                primaryLabel: "暂停识别", closeLabel: "结束 OCR");
                     }, request.Token);
                 }
                 catch (OperationCanceledException) when (request.IsCancellationRequested && !run.IsCancellationRequested) { }
@@ -388,24 +408,23 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         }
     }
 
-    private void ToggleOcrPause()
+    public void ToggleOcrPause()
     {
-        if (watchedRegion is not { } region || resumeAfterAdjustment is not null) return;
-        if (ocrRun is null) StartOcr(region);
+        if (pickerOpen || watchedRegion is not { } region || resumeAfterAdjustment is not null) return;
+        if (ocrRun is null) StartOcr(region, keepCaption: true);
         else PauseOcr();
     }
 
-    private void PauseOcr(bool keepCaption = false)
+    private void PauseOcr()
     {
         Cancel(ref ocrRun);
         CancelUnusedPreparation();
-        if (keepCaption) ocrCaption.MarkStopped();
-        else ocrCaption.Clear();
+        ocrCaption.SetPrimary(ToggleOcrPause, SakuraGlyph.Play, "继续识别", "已暂停");
         ocrFrame?.SetPaused(true);
         RefreshMenu();
     }
 
-    private void StopOcr()
+    public void StopOcr()
     {
         watchedRegion = null;
         resumeAfterAdjustment = null;
@@ -428,7 +447,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     {
         resumeAfterAdjustment = ocrRun is not null;
         Cancel(ref ocrRun);
-        ocrCaption.Clear();
+        if (resumeAfterAdjustment == true) ocrCaption.Clear();
+        RefreshMenu();
     }
 
     private void CompleteOcrAdjustment(ScreenRegion region)
@@ -439,6 +459,7 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         else
         {
             watchedRegion = region;
+            ocrCaption.Reanchor(region);
             ShowOcrFrame();
             RefreshMenu();
         }
@@ -446,9 +467,9 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
 
     private void ToggleAudio()
     {
-        if (audioRun is not null) { StopAudio(); return; }
+        if (audioRun is not null) { StopAudioWithHistory(); return; }
         AudioSource? source = selectedAudio is { } last ? sources.ListSources().FirstOrDefault(candidate => candidate.Id == last.Id) : null;
-        if (source is null) { openTrayMenu(); return; }
+        if (source is null) { chooseAudioSource(); return; }
         StartAudio(source);
     }
 
@@ -457,15 +478,16 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         audioSources.Items.Clear();
         foreach (AudioSource source in sources.ListSources())
         {
-            var item = TrayMenu.Add(audioSources, source.IsActive ? $"{source.DisplayName} · 活跃" : source.DisplayName,
+            var item = TrayMenu.Add(audioSources, source.IsActive ? $"{source.DisplayName} · 正在播放" : source.DisplayName, SakuraGlyph.Window,
                 () => { if (audioRun is null || selectedAudio?.Id != source.Id) StartAudio(source); });
+            item.ToggleType = MenuItemToggleType.Radio;
             item.IsChecked = source.Id == selectedAudio?.Id;
         }
         if (audioSources.Items.Count == 0)
             audioSources.Items.Add(new NativeMenuItem("暂无可选程序") { IsEnabled = false });
     }
 
-    private void StartAudio(AudioSource source)
+    public void StartAudio(AudioSource source)
     {
         if (disposed) return;
         StopAudio(cancelPreparation: false);
@@ -526,6 +548,8 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
         RefreshMenu();
     }
 
+    public void StopAudioWithHistory() => StopAudio(keepWindow: true);
+
     private void RememberPositions(OverlayPositions positions)
     {
         placements = positions;
@@ -546,13 +570,13 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
 
     private void ShowInstant(string text, ScreenRegion? area, TimeSpan? duration = null,
         bool copyable = false, Action? close = null, bool draggable = false, bool keepDraggedPosition = false,
-        Action? stop = null)
+        Action? stop = null, string status = "")
     {
         if (pickerOpen || disposed) return;
         ScreenRegion anchor = area ?? CursorAnchor();
         instantCaption.Show(text, WindowsScreenCapture.GetDisplay(anchor.DisplayId), anchor,
             duration: duration, copyable: copyable, close: close,
-            draggable: draggable, keepDraggedPosition: keepDraggedPosition, stop: stop);
+            draggable: draggable, keepDraggedPosition: keepDraggedPosition, stop: stop, status: status);
     }
 
     private static ScreenRegion CursorAnchor()
@@ -565,12 +589,13 @@ internal sealed class WindowsDesktopController : IAsyncDisposable
     private void RefreshMenu()
     {
         autoMenu.IsChecked = settings.AutoSelection;
-        regionMenu.Header = watchedRegion is null ? "开始持续 OCR" : "停止持续 OCR";
-        pauseOcrMenu.Header = ocrRun is null ? "恢复持续 OCR" : "暂停持续 OCR";
-        pauseOcrMenu.IsEnabled = watchedRegion is not null;
+        regionMenu.Header = pickerOpen ? "正在框选" : watchedRegion is null ? "开始持续 OCR" : "结束持续 OCR";
+        regionMenu.IsEnabled = !pickerOpen;
+        pauseOcrMenu.Header = OcrState == OcrMode.Paused ? "继续识别" : "暂停识别";
+        pauseOcrMenu.IsEnabled = OcrState is OcrMode.Paused or OcrMode.Running;
         audioMenu.Header = audioRun is null ? "开始音频字幕" : "停止音频字幕";
-        setTrayTooltip(audioRun is not null ? "桌面翻译 · 音频字幕"
-            : ocrRun is not null ? "桌面翻译 · 正在监测选区" : "桌面翻译");
+        setTrayTooltip(audioRun is not null ? $"{App.DisplayName} · 音频字幕"
+            : ocrRun is not null ? $"{App.DisplayName} · 正在监测选区" : App.DisplayName);
     }
 
     private void Report(string message)

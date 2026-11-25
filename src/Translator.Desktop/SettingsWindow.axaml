@@ -1,97 +1,230 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Translator.Desktop.SettingsWindow"
-        Title="桌面翻译 · 设置"
-        Width="600" Height="665" MinWidth="475" MinHeight="410"
-        WindowStartupLocation="CenterScreen">
-  <Window.Styles>
-    <Style Selector="TextBlock.heading">
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="FontSize" Value="17" />
-    </Style>
-    <Style Selector="TextBlock.secondary">
-      <Setter Property="Opacity" Value="0.72" />
-      <Setter Property="TextWrapping" Value="Wrap" />
-    </Style>
-  </Window.Styles>
-
-  <Grid Margin="24" RowDefinitions="*,Auto">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="16" Margin="0,0,8,0">
-        <StackPanel Spacing="3">
-          <TextBlock Text="设置" FontSize="27" FontWeight="SemiBold" />
-          <TextBlock Text="本地模型与翻译偏好" Classes="secondary" />
+        Title="樱语翻译" Icon="avares://Translator.Desktop/Assets/translator.ico"
+        Width="1120" Height="820" MinWidth="740" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SakuraBackground}" Foreground="{DynamicResource SakuraInk}">
+  <Grid RowDefinitions="Auto,*">
+    <Border Background="{DynamicResource SakuraPaper}" BorderBrush="{DynamicResource SakuraLine}"
+            BorderThickness="0,0,0,1" Padding="20,11">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="13">
+        <Image x:Name="BrandAvatar" Source="avares://Translator.Desktop/Assets/sakura-avatar.png"
+               Width="42" Height="42" VerticalAlignment="Center" IsHitTestVisible="False" />
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="樱语翻译" FontSize="17" FontWeight="Bold" />
+          <TextBlock Text="SAKURA TRANSLATOR" FontSize="10" LetterSpacing="1.4" Classes="secondary" />
         </StackPanel>
-
-        <Border Padding="16" CornerRadius="8" BorderThickness="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-          <StackPanel Spacing="10">
-            <TextBlock Text="本地模型" Classes="heading" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <TextBox x:Name="ModelDirectoryBox" PlaceholderText="模型目录" LostFocus="RefreshModelDirectory"
-                       AutomationProperties.Name="模型目录" />
-              <Button Grid.Column="1" Content="浏览" Click="BrowseModels" />
-            </Grid>
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-              <TextBlock Text="翻译模型" VerticalAlignment="Center" />
-              <ComboBox x:Name="ModelBox" Grid.Column="1" HorizontalAlignment="Stretch"
-                        PlaceholderText="选择 GGUF 模型" AutomationProperties.Name="翻译模型" />
-            </Grid>
-            <CheckBox x:Name="UseGpuBox" Content="优先使用 GPU" />
-            <CheckBox x:Name="AllowCpuFallbackBox" Content="GPU 不可用时使用 CPU" />
-            <TextBlock x:Name="RuntimeStatus" Classes="secondary" />
-          </StackPanel>
+        <Border Grid.Column="2" Background="#EAF7EE" CornerRadius="12" Padding="10,4" VerticalAlignment="Center">
+          <TextBlock Text="本地运行" Foreground="#22684C" FontSize="12" FontWeight="SemiBold" />
         </Border>
+        <Button x:Name="TrayButton" Grid.Column="3" Classes="sakura-button" />
+      </Grid>
+    </Border>
 
-        <Border Padding="16" CornerRadius="8" BorderThickness="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-          <StackPanel Spacing="12">
-            <TextBlock Text="翻译偏好" Classes="heading" />
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
-                  ColumnSpacing="12" RowSpacing="9">
-              <TextBlock Text="源语言" VerticalAlignment="Center" />
-              <ComboBox x:Name="SourceLanguageBox" Grid.Column="1" Width="150"
-                        AutomationProperties.Name="源语言" />
-              <TextBlock Grid.Row="1" Text="目标语言" VerticalAlignment="Center" />
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="简体中文" VerticalAlignment="Center" />
-              <TextBlock Grid.Row="2" Text="译文字号" VerticalAlignment="Center" />
-              <NumericUpDown x:Name="SubtitleFontBox" Grid.Row="2" Grid.Column="1" Width="150"
-                             AutomationProperties.Name="译文字号"
-                             Minimum="14" Maximum="44" Increment="1" FormatString="0" />
-              <TextBlock Grid.Row="3" Text="字幕底部间距" VerticalAlignment="Center" />
-              <NumericUpDown x:Name="SubtitleOffsetBox" Grid.Row="3" Grid.Column="1" Width="150"
-                             Minimum="16" Maximum="240" Increment="4" FormatString="0" />
-              <TextBlock Grid.Row="4" Text="音频转写模型" VerticalAlignment="Center" />
-              <ComboBox x:Name="AudioAsrBox" Grid.Row="4" Grid.Column="1" MinWidth="200"
-                        AutomationProperties.Name="音频转写模型" />
-            </Grid>
-            <TextBox x:Name="AsrDirectoryBox" PlaceholderText="转写模型目录（可选）"
-                     AutomationProperties.Name="转写模型目录" />
-            <CheckBox x:Name="BilingualBox" Content="字幕同时显示原文" />
-            <CheckBox x:Name="SpeakerLabelsBox" Content="音频字幕区分说话者" />
+    <Grid Grid.Row="1" ColumnDefinitions="180,*">
+      <Border Background="{DynamicResource SakuraPaper}" BorderBrush="{DynamicResource SakuraLine}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="*,Auto" Margin="12,15,12,13" RowSpacing="9">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="Navigation" Spacing="5" />
+          </ScrollViewer>
+          <Border Grid.Row="1" Classes="sakura-card" Padding="10">
+            <StackPanel Spacing="4">
+              <ContentControl x:Name="ModelLabel" FontSize="12" FontWeight="SemiBold" />
+              <TextBlock x:Name="ModelSummary" Classes="secondary" FontSize="11" />
+              <Button x:Name="ModelSettingsButton" Classes="sakura-button" FontSize="11" MinHeight="30" Click="OpenModelSettings" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Column="1">
+        <ScrollViewer x:Name="WorkbenchScroll" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,19,24,22" Spacing="15">
+            <StackPanel Spacing="4">
+              <TextBlock x:Name="PageTitle" Classes="page-title" />
+              <TextBlock x:Name="PageDescription" Classes="secondary" />
+            </StackPanel>
+
+            <StackPanel x:Name="HomePanel" Spacing="13">
+              <Border MinHeight="230" CornerRadius="19" BorderBrush="#F3C9DF" BorderThickness="1" ClipToBounds="True">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                    <GradientStop Offset="0" Color="#FFF1F7" />
+                    <GradientStop Offset="0.6" Color="#FAE0EE" />
+                    <GradientStop Offset="1" Color="#EDDDF9" />
+                  </LinearGradientBrush>
+                </Border.Background>
+                <Grid ColumnDefinitions="1.6*,*" Margin="23,12,13,12" ColumnSpacing="3">
+                  <StackPanel VerticalAlignment="Center" Spacing="10">
+                    <TextBlock Text="今天，想翻译什么？" FontSize="32" FontWeight="Bold" TextWrapping="Wrap" />
+                    <TextBlock Text="从划词、屏幕区域或应用音频开始，译文会在浮窗里逐步出现。" Classes="secondary" />
+                    <WrapPanel ItemSpacing="8" LineSpacing="7" Margin="0,6,0,0">
+                      <Button x:Name="SelectionHeroButton" Classes="sakura-button primary" Click="OpenSelection" />
+                      <Button x:Name="PreviewHeroButton" Classes="sakura-button" Click="OpenPreview" />
+                    </WrapPanel>
+                  </StackPanel>
+                  <Grid Grid.Column="1">
+                    <Ellipse Width="191" Height="191" MaxWidth="191" Stroke="#DB9DC1" StrokeThickness="1" Fill="#75FFFAFD" />
+                    <Image x:Name="HeroMascot" Width="210" Height="206" Stretch="Uniform" IsHitTestVisible="False" />
+                  </Grid>
+                </Grid>
+              </Border>
+              <TextBlock Text="快捷工具" Classes="section-title" />
+              <UniformGrid x:Name="QuickTools" Rows="1" />
+              <TextBlock x:Name="PreviewHeading" Text="浮窗预览" Classes="section-title" />
+              <Border Classes="sakura-card">
+                <Grid ColumnDefinitions="*,1.28*" ColumnSpacing="12">
+                  <StackPanel Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel x:Name="PreviewTabs" ItemSpacing="5" LineSpacing="5" />
+                    <TextBlock x:Name="PreviewHint" Classes="secondary" FontSize="12" />
+                  </StackPanel>
+                  <Border Grid.Column="1" Background="#FAEDF6" CornerRadius="10" Padding="9" MinHeight="94">
+                    <ContentControl x:Name="HomePreview" VerticalAlignment="Center" HorizontalContentAlignment="Stretch" />
+                  </Border>
+                </Grid>
+              </Border>
+            </StackPanel>
+
+            <Border x:Name="SelectionPanel" Classes="sakura-card" IsVisible="False">
+              <StackPanel Spacing="11">
+                <TextBlock x:Name="SelectionState" Classes="section-title" />
+                <TextBlock Text="在其他应用中选中英语或日语文本，译文会出现在选区旁。浮窗工具栏提供复制、停止生成和关闭。" Classes="secondary" />
+                <WrapPanel ItemSpacing="8" LineSpacing="7">
+                  <Button x:Name="SelectionToggle" Classes="sakura-button primary" Click="ToggleSelection" />
+                  <Button x:Name="SelectionPreviewButton" Classes="sakura-button" Click="OpenPreview" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="OcrPanel" Classes="sakura-card" IsVisible="False">
+              <StackPanel Spacing="11">
+                <TextBlock x:Name="OcrState" Classes="section-title" />
+                <TextBlock x:Name="OcrShortcut" Classes="secondary" />
+                <TextBlock Text="拖出选区后，沿边框拖动可移动，拖动角落可缩放。打开选框工具栏的键盘按钮后，可以用方向键移动，按住 Shift 调整大小。暂停时保留选区和译文。" Classes="secondary" />
+                <WrapPanel ItemSpacing="8" LineSpacing="7">
+                  <Button x:Name="OcrStart" Classes="sakura-button primary" Click="StartOcr" />
+                  <Button x:Name="OcrPause" Classes="sakura-button" Click="ToggleOcrPause" />
+                  <Button x:Name="OcrEnd" Classes="sakura-button" Click="EndOcr" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="AudioPanel" Classes="sakura-card" IsVisible="False">
+              <StackPanel Spacing="10">
+                <TextBlock x:Name="AudioState" Classes="section-title" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock x:Name="AudioShortcut" Classes="secondary" />
+                <TextBlock Text="选择要转写的应用" FontWeight="SemiBold" />
+                <ListBox x:Name="AudioPrograms" AutomationProperties.Name="音频程序" SelectionChanged="AudioProgramSelected"
+                         MaxHeight="200" Background="#FFF6FB" BorderBrush="{DynamicResource SakuraLine}" BorderThickness="1" CornerRadius="8" />
+                <TextBlock x:Name="AudioEmpty" Text="暂无可选程序。开始播放音频后刷新列表。" Classes="secondary" IsVisible="False" />
+                <WrapPanel ItemSpacing="8" LineSpacing="7">
+                  <Button x:Name="AudioStart" Classes="sakura-button primary" Click="StartAudio" />
+                  <Button x:Name="AudioStop" Classes="sakura-button" Click="StopAudio" />
+                  <Button x:Name="AudioRefresh" Classes="sakura-button" Click="RefreshAudio" />
+                  <Button x:Name="AudioSettingsButton" Classes="sakura-button" Click="OpenAudioSettings" />
+                </WrapPanel>
+                <TextBlock Text="停止字幕后保留已显示内容。关闭浮窗会结束会话。" Classes="secondary" />
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="WorkbenchFeedback" Classes="secondary" AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
-        </Border>
+        </ScrollViewer>
 
-        <Border Padding="16" CornerRadius="8" BorderThickness="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-          <StackPanel Spacing="12">
-            <TextBlock Text="全局快捷键" Classes="heading" />
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="8">
-              <TextBlock Text="持续 OCR" VerticalAlignment="Center" />
-              <TextBox x:Name="ContinuousOcrKeyBox" Grid.Column="1" Width="164" />
-              <TextBlock Grid.Row="1" Text="音频字幕" VerticalAlignment="Center" />
-              <TextBox x:Name="AudioKeyBox" Grid.Row="1" Grid.Column="1" Width="164" />
-            </Grid>
+        <Grid x:Name="SettingsPanel" RowDefinitions="Auto,*,Auto" Margin="24,19,24,13" RowSpacing="12" IsVisible="False">
+          <StackPanel Spacing="4">
+            <TextBlock Text="设置" Classes="page-title" />
+            <TextBlock Text="管理本地模型、翻译偏好、字幕显示与快捷键。" Classes="secondary" />
           </StackPanel>
-        </Border>
-      </StackPanel>
-    </ScrollViewer>
+          <Grid Grid.Row="1" ColumnDefinitions="1.8*,*" ColumnSpacing="10">
+            <ScrollViewer x:Name="SettingsScroll" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="10" Margin="0,0,5,0">
+                <Border x:Name="ModelSection" Classes="sakura-card">
+                  <StackPanel Spacing="8">
+                    <ContentControl x:Name="LocalHeading" FontSize="17" FontWeight="SemiBold" />
+                    <TextBlock Text="模型目录" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                      <TextBox x:Name="ModelDirectoryBox" PlaceholderText="模型目录" LostFocus="RefreshModelDirectory"
+                               AutomationProperties.Name="模型目录" />
+                      <Button x:Name="BrowseButton" Grid.Column="1" Classes="sakura-button" Click="BrowseModels" />
+                    </Grid>
+                    <TextBlock Text="翻译模型" FontWeight="SemiBold" />
+                    <ComboBox x:Name="ModelBox" HorizontalAlignment="Stretch" PlaceholderText="选择 GGUF 模型"
+                              AutomationProperties.Name="翻译模型" />
+                    <ToggleSwitch x:Name="UseGpuBox" Content="优先使用 GPU" OffContent="" OnContent="" />
+                    <ToggleSwitch x:Name="AllowCpuFallbackBox" Content="GPU 不可用时使用 CPU" OffContent="" OnContent="" />
+                    <TextBlock x:Name="RuntimeStatus" Classes="secondary" FontSize="12" />
+                  </StackPanel>
+                </Border>
 
-    <Grid Grid.Row="1" Margin="0,16,0,0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <TextBlock x:Name="Feedback" Classes="secondary" VerticalAlignment="Center"
-                 AutomationProperties.LiveSetting="Polite" />
-      <Button Grid.Column="1" Classes="accent" MinWidth="90" HorizontalContentAlignment="Center"
-              VerticalAlignment="Center" Content="保存" Click="SaveSettings" />
+                <Border x:Name="DisplaySection" Classes="sakura-card">
+                  <StackPanel Spacing="9">
+                    <ContentControl x:Name="DisplayHeading" FontSize="17" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="源语言" FontWeight="SemiBold" />
+                        <ComboBox x:Name="SourceLanguageBox" HorizontalAlignment="Stretch" AutomationProperties.Name="源语言" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="目标语言" FontWeight="SemiBold" /><TextBlock Text="简体中文" Margin="0,7,0,0" /></StackPanel>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="浮窗译文字号" FontWeight="SemiBold" />
+                        <NumericUpDown x:Name="SubtitleFontBox" MinWidth="0" Increment="1" FormatString="0" AutomationProperties.Name="浮窗译文字号" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <TextBlock Text="字幕底部间距" FontWeight="SemiBold" />
+                        <NumericUpDown x:Name="SubtitleOffsetBox" MinWidth="0" Increment="4" FormatString="0" AutomationProperties.Name="音频字幕底部间距" />
+                      </StackPanel>
+                    </Grid>
+                    <ToggleSwitch x:Name="BilingualBox" Content="音频字幕同时显示原文" OffContent="" OnContent="" />
+                  </StackPanel>
+                </Border>
+
+                <Border x:Name="AudioSection" Classes="sakura-card">
+                  <StackPanel Spacing="8">
+                    <ContentControl x:Name="AudioHeading" FontSize="17" FontWeight="SemiBold" />
+                    <TextBlock Text="音频转写模型" FontWeight="SemiBold" />
+                    <ComboBox x:Name="AudioAsrBox" HorizontalAlignment="Stretch" AutomationProperties.Name="音频转写模型" />
+                    <TextBlock Text="转写模型目录（可选）" FontWeight="SemiBold" />
+                    <TextBox x:Name="AsrDirectoryBox" PlaceholderText="使用默认目录" AutomationProperties.Name="转写模型目录" />
+                    <ToggleSwitch x:Name="SpeakerLabelsBox" Content="区分说话者" OffContent="" OnContent="" />
+                    <TextBlock Text="更改转写模型、目录或说话者标注后，正在运行的字幕会话会重新开始。" Classes="secondary" FontSize="12" />
+                  </StackPanel>
+                </Border>
+
+                <Border x:Name="ShortcutSection" Classes="sakura-card">
+                  <StackPanel Spacing="8">
+                    <ContentControl x:Name="ShortcutHeading" FontSize="17" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <StackPanel Spacing="3"><TextBlock Text="持续 OCR" FontWeight="SemiBold" /><TextBox x:Name="ContinuousOcrKeyBox" AutomationProperties.Name="持续 OCR 快捷键" /></StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="音频字幕" FontWeight="SemiBold" /><TextBox x:Name="AudioKeyBox" AutomationProperties.Name="音频字幕快捷键" /></StackPanel>
+                    </Grid>
+                    <TextBlock Text="可使用字母、数字或 F1–F12，并搭配 Ctrl、Alt、Shift 或 Win。" Classes="secondary" FontSize="12" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+              <Border Classes="sakura-card" VerticalAlignment="Top">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="显示预览" Classes="section-title" />
+                  <WrapPanel x:Name="SettingsLinks" ItemSpacing="4" LineSpacing="4" />
+                  <ContentControl x:Name="SettingsPreview" HorizontalContentAlignment="Stretch" />
+                </StackPanel>
+              </Border>
+            </ScrollViewer>
+          </Grid>
+          <Border Grid.Row="2" Classes="sakura-card" Padding="9">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="7">
+              <TextBlock x:Name="Feedback" Classes="secondary" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+              <Button x:Name="DiscardButton" Grid.Column="1" Classes="sakura-button" Content="撤销修改" Click="DiscardSettings" />
+              <Button x:Name="SaveButton" Grid.Column="2" Classes="sakura-button primary" Content="保存设置" Click="SaveSettings" />
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
     </Grid>
   </Grid>
 </Window>

@@ -8,6 +8,8 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
     <AvaloniaResource Include="Assets/translator.ico" />
+    <AvaloniaResource Include="Assets/sakura-avatar.png" />
+    <AvaloniaResource Include="Assets/sakura-mascot.webp" />
     <None Update="Assets/translator.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

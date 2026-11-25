@@ -133,12 +133,12 @@ public sealed class WindowsScreenCapture(OcrTuning tuning) : IScreenCapture
     public static void StyleOverlay(IntPtr handle, bool clickThrough, bool noActivate = false)
     {
         if (handle == IntPtr.Zero) return;
-        if (clickThrough || noActivate)
-        {
-            const int extendedStyle = -20;
-            IntPtr style = GetWindowLongPtr(handle, extendedStyle);
-            SetWindowLongPtr(handle, extendedStyle, new IntPtr((style.ToInt64() & ~0x20L) | 0x08000000L | (clickThrough ? 0x20L : 0L)));
-        }
+        const int extendedStyle = -20;
+        const long transparent = 0x20L, noActivation = 0x08000000L;
+        long style = GetWindowLongPtr(handle, extendedStyle).ToInt64();
+        long updated = (style & ~(transparent | noActivation))
+            | (clickThrough ? transparent : 0L) | (noActivate || clickThrough ? noActivation : 0L);
+        if (updated != style) SetWindowLongPtr(handle, extendedStyle, new IntPtr(updated));
         SetWindowDisplayAffinity(handle, 0x11);
     }
 
