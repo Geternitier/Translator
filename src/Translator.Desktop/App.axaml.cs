@@ -13,6 +13,8 @@ namespace Translator.Desktop;
 
 public sealed partial class App : Application
 {
+    internal const string DisplayName = "樱语翻译";
+    private readonly NativeMenu trayMenu = new();
     private WindowsDesktopController? controller;
     private WindowsNotificationTray? windowsTray;
     private string? trayError;
@@ -25,33 +27,34 @@ public sealed partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var menu = new NativeMenu();
+            TrayMenu.Add(trayMenu, "打开工作台", SakuraGlyph.Home, () => OpenWorkbench(desktop));
             if (OperatingSystem.IsWindows())
             {
-                try { windowsTray = new WindowsNotificationTray(menu, () => OpenSettings(desktop),
+                trayMenu.Items.Add(new NativeMenuItemSeparator());
+                try { windowsTray = new WindowsNotificationTray(trayMenu, () => OpenWorkbench(desktop),
                     () => controller?.RefreshAudioSources()); }
                 catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
                 {
                     trayError = exception.Message;
                 }
-                controller = new WindowsDesktopController(text => windowsTray?.SetTooltip(text), menu,
-                    () => windowsTray?.OpenMenuAtCursor(), new WindowsAudioSourceCatalog(), new ProcessLoopbackCapture(),
+                controller = new WindowsDesktopController(text => windowsTray?.SetTooltip(text), trayMenu,
+                    () => OpenWorkbench(desktop, WorkbenchPage.Audio), new WindowsAudioSourceCatalog(), new ProcessLoopbackCapture(),
                     CreateSpeechTranscriber, CreateSpeakerDiarizer, new PaddleScreenOcr(RuntimePaths.OcrDirectory), CreateTranslationService);
             }
 
-            TrayMenu.Add(menu, "设置", () => OpenSettings(desktop));
-            TrayMenu.Add(menu, "退出", () => ExitApplication(desktop));
+            TrayMenu.Add(trayMenu, "设置", SakuraGlyph.Settings, () => OpenWorkbench(desktop, WorkbenchPage.Settings));
+            TrayMenu.Add(trayMenu, "退出", SakuraGlyph.Exit, () => ExitApplication(desktop));
             if (OperatingSystem.IsWindows()) Dispatcher.UIThread.Post(() =>
             {
                 if (exiting) return;
                 windowsTray?.Start();
-                if (TrayUnavailable) OpenSettings(desktop);
+                if (TrayUnavailable && desktop.MainWindow is null) OpenWorkbench(desktop);
             });
             else
             {
                 using Stream iconStream = AssetLoader.Open(new Uri("avares://Translator.Desktop/Assets/translator.ico"));
-                var trayIcon = new TrayIcon { Icon = new WindowIcon(iconStream), ToolTipText = "桌面翻译", Menu = menu };
-                trayIcon.Clicked += (_, _) => OpenSettings(desktop);
+                var trayIcon = new TrayIcon { Icon = new WindowIcon(iconStream), ToolTipText = DisplayName, Menu = trayMenu };
+                trayIcon.Clicked += (_, _) => OpenWorkbench(desktop);
                 TrayIcon.SetIcons(this, new TrayIcons { trayIcon });
             }
             desktop.Exit += (_, _) =>
@@ -63,7 +66,7 @@ public sealed partial class App : Application
 
             if (desktop.Args?.Contains("--settings", StringComparer.Ordinal) == true)
             {
-                OpenSettings(desktop);
+                OpenWorkbench(desktop, WorkbenchPage.Settings);
             }
         }
 
@@ -101,7 +104,7 @@ public sealed partial class App : Application
 
     internal void ActivateSettings()
     {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) OpenSettings(desktop);
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) OpenWorkbench(desktop, WorkbenchPage.Settings);
     }
 
     private async void ExitApplication(IClassicDesktopStyleApplicationLifetime desktop)
@@ -112,27 +115,26 @@ public sealed partial class App : Application
         finally { desktop.Shutdown(); }
     }
 
-    private void OpenSettings(IClassicDesktopStyleApplicationLifetime desktop)
+    private void OpenWorkbench(IClassicDesktopStyleApplicationLifetime desktop, WorkbenchPage page = WorkbenchPage.Home)
     {
         if (exiting) return;
         if (desktop.MainWindow is not SettingsWindow window)
         {
             window = new SettingsWindow();
-            if (controller is { } runtime)
-            {
-                window.SettingsSaved += runtime.ApplySettings;
-                window.MonitorStatus(() => TrayUnavailable
-                    ? $"{runtime.Status}\n{TrayStatus()} 关闭设置将退出应用。"
-                    : runtime.Status);
-            }
+            if (controller is { } runtime) window.SettingsSaved += runtime.ApplySettings;
+            window.AttachRuntime(controller, () => TrayUnavailable
+                ? $"{controller?.Status}\n{TrayStatus()} 关闭窗口将退出应用。".TrimStart()
+                : controller?.Status ?? "", TrayMenu.CreateFlyout(trayMenu, () => controller?.RefreshAudioSources()));
             window.Closed += (_, _) =>
             {
                 desktop.MainWindow = null;
                 if (TrayUnavailable) ExitApplication(desktop);
             };
             desktop.MainWindow = window;
+            window.Navigate(page);
             window.Show();
         }
+        else window.Navigate(page);
 
         if (window.WindowState == WindowState.Minimized)
         {

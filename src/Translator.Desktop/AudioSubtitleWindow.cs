@@ -13,11 +13,12 @@ namespace Translator.Desktop;
 internal sealed class AudioSubtitleWindow : FloatingOverlay
 {
     private readonly int maxLines = RuntimePaths.Configuration.Options.Audio.VisibleLines;
-    private static readonly IBrush Secondary = new SolidColorBrush(Color.Parse("#B2C4C2"));
+    private static readonly IBrush Secondary = SakuraVisuals.CaptionSecondary;
     private readonly StackPanel lines = new() { Spacing = 12, Margin = new Thickness(0, 8, 0, 0) };
     private readonly ScrollViewer scroll;
     private readonly TextBlock heading;
     private readonly CaptionActions actions;
+    private readonly string source;
     private readonly TextBlock waiting = new() { Text = "等待语音…", Foreground = Secondary };
     private readonly TextBlock preview = new() { Foreground = Secondary, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Dictionary<long, Row> rows = [];
@@ -32,6 +33,7 @@ internal sealed class AudioSubtitleWindow : FloatingOverlay
     public AudioSubtitleWindow(string source, DesktopDisplay display, AppSettings settings,
         OverlayPosition? savedPosition, Action<OverlayPosition> moved, Action stop) : base(clickThrough: false)
     {
+        this.source = source;
         this.settings = settings;
         userPosition = savedPosition;
         if (savedPosition is { } preferred) display = WindowsScreenCapture.DisplayAt(preferred.X, preferred.Y);
@@ -55,25 +57,33 @@ internal sealed class AudioSubtitleWindow : FloatingOverlay
         };
         heading = new TextBlock
         {
-            Text = source, Foreground = Secondary, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = Secondary, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center
         };
-        var dragArea = new Border { Background = Brushes.Transparent, Child = heading, Cursor = new Cursor(StandardCursorType.SizeAll) };
+        var title = new DockPanel { LastChildFill = true };
+        var grip = SakuraVisuals.Icon(SakuraGlyph.Grip, Secondary, 16);
+        grip.Margin = new Thickness(0, 0, 5, 0);
+        DockPanel.SetDock(grip, Dock.Left);
+        title.Children.Add(grip);
+        title.Children.Add(heading);
+        var dragArea = new Border { Background = Brushes.Transparent, Child = title, Cursor = new Cursor(StandardCursorType.SizeAll) };
         dragArea.PointerPressed += (_, args) =>
         {
             if (args.GetCurrentPoint(dragArea).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
         };
         var body = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
         Grid.SetRow(scroll, 1);
-        body.Children.Add(dragArea);
+        actions = new CaptionActions(this, "复制字幕历史");
+        actions.SetActions(null, stop, Close, actionLabel: "停止字幕", closeLabel: "关闭字幕");
+        var header = new DockPanel();
+        DockPanel.SetDock(actions.View, Dock.Right);
+        header.Children.Add(actions.View);
+        header.Children.Add(dragArea);
+        EnableKeyboardMovement(header);
+        body.Children.Add(header);
         body.Children.Add(scroll);
-        Content = new Border
-        {
-            Background = CaptionOverlay.Surface, CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(15, 9), ClipToBounds = true, Child = body
-        };
-        actions = new CaptionActions(this);
-        actions.SetActions(true, null, stop, Close);
+        Content = SakuraVisuals.CaptionSurface(body);
+        SetStatus("等待语音");
         Opened += (_, _) =>
         {
             automaticPosition = Position;
@@ -89,6 +99,8 @@ internal sealed class AudioSubtitleWindow : FloatingOverlay
             moved(position);
         };
     }
+
+    public string State { get; private set; } = "";
 
     public void ApplySettings(AppSettings changed)
     {
@@ -114,10 +126,13 @@ internal sealed class AudioSubtitleWindow : FloatingOverlay
         {
             case SubtitleUpdate.Preview live:
                 preview.Text = live.Text;
+                if (!string.IsNullOrWhiteSpace(live.Text)) SetStatus("正在转写");
                 if (!settings.BilingualSubtitles) return;
                 break;
             case SubtitleUpdate.Lines translated:
                 ApplyLines(translated.Items);
+                if (translated.Items.Count != 0)
+                    SetStatus(translated.Items.All(line => line.IsRevised) ? "段落已修订" : "正在转写");
                 break;
             case SubtitleUpdate.Speakers labels:
                 speakers = labels.Snapshot;
@@ -135,11 +150,17 @@ internal sealed class AudioSubtitleWindow : FloatingOverlay
     {
         if (stopped) return;
         stopped = true;
-        actions.MarkStopped();
-        heading.Text += " · 已停止";
+        actions.SetPrimary(null, SakuraGlyph.Stop, "停止字幕");
+        SetStatus("已停止");
         waiting.Text = "已停止转写";
         preview.Text = "";
         UpdatePreview();
+    }
+
+    private void SetStatus(string value)
+    {
+        State = value;
+        heading.Text = $"{source} · {value}";
     }
 
     private void ApplyLines(IReadOnlyList<SubtitleLine> update)

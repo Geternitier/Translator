@@ -16,21 +16,21 @@ internal sealed class WindowsNotificationTray : IDisposable
     private readonly Window owner = new() { ShowInTaskbar = false, ShowActivated = false };
     private readonly DispatcherTimer retry = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly NativeMenu menu;
-    private readonly Action openSettings;
+    private readonly Action openWorkbench;
     private readonly Action refreshMenu;
     private readonly IntPtr handle;
     private readonly IntPtr icon;
     private readonly uint taskbarCreated;
-    private string tooltip = "桌面翻译";
+    private string tooltip = App.DisplayName;
     private bool version4;
     private bool menuQueued;
     private bool menuOpen;
     private bool disposed;
 
-    public WindowsNotificationTray(NativeMenu menu, Action openSettings, Action refreshMenu)
+    public WindowsNotificationTray(NativeMenu menu, Action openWorkbench, Action refreshMenu)
     {
         this.menu = menu;
-        this.openSettings = openSettings;
+        this.openWorkbench = openWorkbench;
         this.refreshMenu = refreshMenu;
         handle = owner.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "translator.ico");
@@ -96,7 +96,7 @@ internal sealed class WindowsNotificationTray : IDisposable
                 QueueMenu(version4, unchecked((int)wParam.ToInt64()));
             }
             else if (notification == KeySelectIcon)
-                Dispatcher.UIThread.Post(openSettings);
+                Dispatcher.UIThread.Post(openWorkbench);
             handled = true;
         }
         return IntPtr.Zero;
@@ -130,11 +130,7 @@ internal sealed class WindowsNotificationTray : IDisposable
             uint selection = TrackPopupMenuEx(popup, 0x0102, x, y, handle, IntPtr.Zero); // TPM_RETURNCMD | TPM_RIGHTBUTTON
             PostMessage(handle, 0, IntPtr.Zero, IntPtr.Zero);
             if (selection >= 1 && selection <= commands.Count)
-            {
-                NativeMenuItem item = commands[(int)selection - 1];
-                if (item.IsEnabled && item.Command?.CanExecute(item.CommandParameter) == true)
-                    Dispatcher.UIThread.Post(() => item.Command.Execute(item.CommandParameter));
-            }
+                TrayMenu.InvokeAfterClose(commands[(int)selection - 1]);
 
             void AddEntries(IntPtr parent, NativeMenu current)
             {
@@ -168,8 +164,6 @@ internal sealed class WindowsNotificationTray : IDisposable
             menuOpen = false;
         }
     }
-
-    public void OpenMenuAtCursor() => ShowMenu(false, 0, 0);
 
     private NotifyIconData IconData() => new()
     {

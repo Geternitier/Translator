@@ -1,0 +1,90 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="SakuraBackground" Color="#FFF8FB" />
+    <SolidColorBrush x:Key="SakuraPaper" Color="#FFFCFE" />
+    <SolidColorBrush x:Key="SakuraInk" Color="#392539" />
+    <SolidColorBrush x:Key="SakuraMuted" Color="#725E72" />
+    <SolidColorBrush x:Key="SakuraLine" Color="#EFDFEB" />
+    <SolidColorBrush x:Key="SakuraPink" Color="#942557" />
+    <SolidColorBrush x:Key="SakuraSoft" Color="#FCE5EF" />
+  </Styles.Resources>
+  <Style Selector="TextBlock.page-title">
+    <Setter Property="FontSize" Value="29" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="TextBlock.section-title">
+    <Setter Property="FontSize" Value="18" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{StaticResource SakuraMuted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.secondary.validation-error">
+    <Setter Property="Foreground" Value="{StaticResource SakuraPink}" />
+  </Style>
+  <Style Selector="Border.sakura-card">
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderBrush" Value="{StaticResource SakuraLine}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="15" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style Selector="Button.sakura-button">
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderBrush" Value="{StaticResource SakuraLine}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{StaticResource SakuraInk}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="MinHeight" Value="38" />
+    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.sakura-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#FFF1F7" />
+    <Setter Property="BorderBrush" Value="#EFBDD5" />
+    <Setter Property="Foreground" Value="#75214B" />
+  </Style>
+  <Style Selector="Button.sakura-button.primary">
+    <Setter Property="Background" Value="#AB316B" />
+    <Setter Property="BorderBrush" Value="#AB316B" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.sakura-button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#942557" />
+    <Setter Property="BorderBrush" Value="#942557" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.sakura-nav">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{StaticResource SakuraMuted}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.sakura-nav.selected">
+    <Setter Property="Background" Value="{StaticResource SakuraSoft}" />
+    <Setter Property="Foreground" Value="{StaticResource SakuraPink}" />
+    <Setter Property="BorderBrush" Value="#F3CCDF" />
+  </Style>
+  <Style Selector="Button.caption-tool">
+    <Setter Property="Background" Value="#55405E" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="5" />
+    <Setter Property="Width" Value="29" />
+    <Setter Property="Height" Value="29" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.caption-tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#725477" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="TextBox, ComboBox, NumericUpDown">
+    <Setter Property="Background" Value="#FFFBFE" />
+    <Setter Property="BorderBrush" Value="#DDC3D6" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+</Styles>
